@@ -5,6 +5,7 @@
 int BUFFER_SIZE = 5; // Size of the input buffer
 
 // Prints the current errno value and its description
+// Use this function to throw an explained error without breaking out of the loop
 void print_errno(void) {
     printf("Error Code: %s (%d)\n", strerror(errno), errno);
 }
