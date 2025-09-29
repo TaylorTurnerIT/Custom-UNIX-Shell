@@ -1,0 +1,32 @@
+# Compiled object files
+*.o
+
+# Compiled binary files
+*.out
+*.exe
+
+# Precompiled Headers
+*.gch
+
+# Debug files
+*.dSYM/
+*.stackdump
+
+# Build directories
+/build/
+bin/
+obj/
+
+# Editor/IDE files
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
