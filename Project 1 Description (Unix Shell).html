@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html><head><link rel="stylesheet" href="https://templates.lcs.brightspace.com/lib/assets/css/styles.min.css"><link rel="stylesheet" href="on" data-override="override"></head><body style="color: rgb(32, 33, 34); font-family: undefined; font-size: 12px;"><h1><b>Project 1 : Unix Shell</b><b>&nbsp;</b></h1>
+<h2><b>Unix Shell</b></h2>
+<p>In this project, you'll build a simple Unix shell. The shell is the heart of the command-line interface, and thus is central to the Unix/C programming environment. Mastering use of the shell is necessary to become proficient in this world; knowing how the shell itself is built is the focus of this project.</p>
+<p>There are three specific objectives to this assignment:</p>
+<ul type="disc">
+<li>To further familiarize yourself with the Linux programming environment.</li>
+<li>To learn how processes are created, destroyed, and managed.</li>
+<li>To gain exposure to the necessary functionality in shells.</li>
+</ul>
+<p><b>&nbsp;</b></p>
+<h2><b>Overview</b></h2>
+<p>In this assignment, you will implement a&nbsp;<i>command line interpreter (CLI)</i>&nbsp;or, as it is more commonly known, a&nbsp;<i>shell</i>. The shell should operate in this basic way: when you type in a command (in response to its prompt), the shell creates a child process that executes the command you entered and then prompts for more user input when it has finished.</p>
+<p>The shells you implement will be similar to, but simpler than, the one you run every day in Unix. If you don't know what shell you are running, it's probably&nbsp;bash. One thing you should do on your own time is learn more about your shell, by reading the man pages or other online materials.</p>
+<p><b>&nbsp;</b></p>
+<h2><b>Program Specifications</b></h2>
+<p><b>&nbsp;</b></p>
+<h3><b>Basic Shell:&nbsp;wish</b></h3>
+<p>Your basic shell, called&nbsp;<b>wish</b>, is basically an interactive loop: it repeatedly prints a prompt&nbsp;wish&gt; &nbsp;(note the space after the greater-than sign), parses the input, executes the command specified on that line of input, and waits for the command to finish. This is repeated until the user types&nbsp;exit. The name of your final executable should be&nbsp;wish.</p>
+<p>The shell can be invoked with either no arguments or a single argument; anything else is an error. Here is the no-argument way:</p>
+<pre class="line-numbers d2l-code"><code class="language-bash">prompt&gt; ./wish
+wish&gt; </code></pre>
+<p>&nbsp;</p>
+<p>At this point,&nbsp;wish&nbsp;is running, and ready to accept commands. Type away!</p>
+<p>The mode above is called&nbsp;<i>interactive</i>&nbsp;mode, and allows the user to type commands directly. The shell also supports a&nbsp;<i>batch mode</i>, which instead reads input from a batch file and executes commands from therein. Here is how you run the shell with a batch file named&nbsp;batch.txt:</p>
+<pre class="line-numbers d2l-code"><code class="language-bash">prompt&gt; ./wish batch.txt</code></pre>
+<p></p>
+<p>One difference between batch and interactive modes: in interactive mode, a prompt is printed (<span style="color: #d40067;">wish&gt;</span> ). In batch mode, no prompt should be printed.</p>
+<p>You should structure your shell such that it creates a process for each new command (the exception are&nbsp;<i>built-in commands</i>, discussed below). Your basic shell should be able to parse a command and run the program corresponding to the command. For example, if the user types&nbsp;<span style="color: #d40067;">ls -la /tmp</span>, your shell should run the program&nbsp;<span style="color: #d40067;">/bin/ls</span>&nbsp;with the given arguments&nbsp;<span style="color: #d40067;">-la</span>&nbsp;and&nbsp;<span style="color: #d40067;">/tmp</span>&nbsp;(how does the shell know to run&nbsp;/bin/ls? It's something called the shell&nbsp;<b>path</b>; more on this below).</p>
+<h2><b>Structure</b></h2>
+<h3><b>Basic Shell</b></h3>
+<p>The shell is very simple (conceptually): it runs in a while loop, repeatedly asking for input to tell it what command to execute. It then executes that command. The loop continues indefinitely, until the user types the built-in command&nbsp;exit, at which point it exits. That's it!</p>
+<p>For reading lines of input, you should use&nbsp;getline(). This allows you to obtain arbitrarily long input lines with ease. Generally, the shell will be run in&nbsp;<i>interactive mode</i>, where the user types a command (one at a time) and the shell acts on it. However, your shell will also support&nbsp;<i>batch mode</i>, in which the shell is given an input file of commands; in this case, the shell should not read user input (from&nbsp;stdin) but rather from this file to get the commands to execute.</p>
+<p>In either mode, if you hit the end-of-file marker (EOF), you should call&nbsp;exit(0)&nbsp;and exit gracefully.</p>
+<p>To parse the input line into constituent pieces, you might want to use&nbsp;strsep(). Read the man page (carefully) for more details.</p>
+<p>To execute commands, look into&nbsp;<span style="color: #202122;">fork(),&nbsp;exec(),</span> and&nbsp;wait()/waitpid(). See the man pages for these functions, and also read the relevant&nbsp;<a href="http://www.ostep.org/cpu-api.pdf">book chapter</a>&nbsp;for a brief overview.</p>
+<p>You will note that there are a variety of commands in the&nbsp;exec&nbsp;family; for this project, you must use&nbsp;<span style="color: #d40067;">execv</span>. You should&nbsp;<b>not</b>&nbsp;use the&nbsp;system()&nbsp;library function call to run a command. Remember that if&nbsp;execv()&nbsp;is successful, it will not return; if it does return, there was an error (e.g., the command does not exist). The most challenging part is getting the arguments correctly specified.</p>
+<h3><b>Paths</b></h3>
+<p>In our example above, the user typed&nbsp;ls&nbsp;but the shell knew to execute the program&nbsp;/bin/ls. How does your shell know this?</p>
+<p>It turns out that the user must specify a&nbsp;<b>path</b>&nbsp;variable to describe the set of directories to search for executables; the set of directories that comprise the path are sometimes called the&nbsp;<i>search path</i>&nbsp;of the shell. The path variable contains the list of all directories to search, in order, when the user types a command.</p>
+<p><b>Important:</b>&nbsp;Note that the shell itself does not&nbsp;<i>implement</i>&nbsp;ls&nbsp;or other commands (except built-ins). All it does is find those executables in one of the directories specified by&nbsp;path&nbsp;and create a new process to run them.</p>
+<p>To check if a particular file exists in a directory and is executable, consider the&nbsp;access()&nbsp;system call. For example, when the user types&nbsp;ls, and path is set to include both&nbsp;/bin&nbsp;and&nbsp;/usr/bin, try&nbsp;access("/bin/ls", X_OK). If that fails, try "/usr/bin/ls". If that fails too, it is an error.</p>
+<p>Your initial shell path should contain one directory:&nbsp;/bin</p>
+<p>Note: Most shells allow you to specify a binary specifically without using a search path, using either&nbsp;<b>absolute paths</b>&nbsp;or&nbsp;<b>relative paths</b>. For example, a user could type the&nbsp;<b>absolute path</b>&nbsp;/bin/ls&nbsp;and execute the&nbsp;ls&nbsp;binary without a search path being needed. A user could also specify a&nbsp;<b>relative path</b>&nbsp;which starts with the current working directory and specifies the executable directly, e.g.,&nbsp;./main. In this project, you&nbsp;<b>do not</b>&nbsp;have to worry about these features.</p>
+<h3><b>Built-in Commands</b></h3>
+<p>Whenever your shell accepts a command, it should check whether the command is a&nbsp;<b>built-in command</b>&nbsp;or not. If it is, it should not be executed like other programs. Instead, your shell will invoke your implementation of the built-in command. For example, to implement the&nbsp;exit&nbsp;built-in command, you simply call&nbsp;exit(0);&nbsp;in your wish source code, which then will exit the shell.</p>
+<p>In this project, you should implement&nbsp;exit,&nbsp;cd, and&nbsp;path&nbsp;as built-in commands.</p>
+<ul type="disc">
+<li>exit: When the user types&nbsp;exit, your shell should simply call the&nbsp;exit&nbsp;system call with 0 as a parameter. It is an error to pass any arguments to&nbsp;exit.</li>
+<li>cd:&nbsp;cd&nbsp;always take one argument (0 or &gt;1 args should be signaled as an error). To change directories, use the&nbsp;chdir()&nbsp;system call with the argument supplied by the user; if&nbsp;chdir&nbsp;fails, that is also an error.</li>
+<li>path: The&nbsp;path&nbsp;command takes 0 or more arguments, with each argument separated by whitespace from the others. A typical usage would be like this:&nbsp;wish&gt; path /bin /usr/bin, which would add&nbsp;/bin&nbsp;and&nbsp;/usr/bin&nbsp;to the search path of the shell. If the user sets path to be empty, then the shell should not be able to run any programs (except built-in commands). The&nbsp;path&nbsp;command always overwrites the old path with the newly specified path.</li>
+</ul>
+<h3><b>Redirection</b></h3>
+<p>Many times, a shell user prefers to send the output of a program to a file rather than to the screen. Usually, a shell provides this nice feature with the&nbsp;&gt;&nbsp;character. Formally this is named as redirection of standard output. To make your shell users happy, your shell should also include this feature, but with a slight twist (explained below).</p>
+<p>For example, if a user types&nbsp;ls -la /tmp &gt; output, nothing should be printed on the screen. Instead, the standard output of the&nbsp;ls&nbsp;program should be rerouted to the file&nbsp;output. In addition, the standard error output of the program should be rerouted to the file&nbsp;output&nbsp;(the twist is that this is a little different than standard redirection).</p>
+<p>If the&nbsp;output&nbsp;file exists before you run your program, you should simple overwrite it (after truncating it).</p>
+<p>The exact format of redirection is a command (and possibly some arguments) followed by the redirection symbol followed by a filename. Multiple redirection operators or multiple files to the right of the redirection sign are errors.</p>
+<p>Note: don't worry about redirection for built-in commands (e.g., we will not test what happens when you type&nbsp;path /bin &gt; file).</p>
+<h3><b>Parallel Commands</b></h3>
+<p>Your shell will also allow the user to launch parallel commands. This is accomplished with the ampersand operator as follows:</p>
+<pre class="line-numbers d2l-code"><code class="language-bash">wish&gt; cmd1 &amp; cmd2 args1 args2 &amp; cmd3 args1</code></pre>
+<p>In this case, instead of running&nbsp;cmd1&nbsp;and then waiting for it to finish, your shell should run&nbsp;cmd1,&nbsp;cmd2, and&nbsp;cmd3&nbsp;(each with whatever arguments the user has passed to it) in parallel,&nbsp;<i>before</i>&nbsp;waiting for any of them to complete.</p>
+<p>Then, after starting all such processes, you must make sure to use&nbsp;wait()&nbsp;(or&nbsp;waitpid) to wait for them to complete. After all processes are done, return control to the user as usual (or, if in batch mode, move on to the next line).</p>
+<h3><b>Program Errors</b></h3>
+<p><b>The one and only error message.</b> You should print this one and only error message whenever you encounter an error of any type:</p>
+<pre class="line-numbers d2l-code"><code class="language-c">char error_message[30] = "An error has occurred\n";
+write(STDERR_FILENO, error_message, strlen(error_message)); </code></pre>
+<p>The error message should be printed to stderr (standard error), as shown above.</p>
+<p>After most errors, your shell simply&nbsp;<i>continue processing</i>&nbsp;after printing the one and only error message. However, if the shell is invoked with more than one file, or if the shell is passed a bad batch file, it should exit by calling&nbsp;exit(1).</p>
+<p>There is a difference between errors that your shell catches and those that the program catches. Your shell should catch all the syntax errors specified in this project page. If the syntax of the command looks perfect, you simply run the specified program. If there are any program-related errors (e.g., invalid arguments to&nbsp;ls&nbsp;when you run it, for example), the shell does not have to worry about that (rather, the program will print its own error messages and exit).</p>
+<h3><b>Miscellaneous Hints</b></h3>
+<p>Remember to get the&nbsp;<b>basic functionality</b>&nbsp;of your shell working before worrying about all of the error conditions and end cases. For example, first get a single command running (probably first a command with no arguments, such as&nbsp;ls).</p>
+<p>Next, add built-in commands. Then, try working on redirection. Finally, think about parallel commands. Each of these requires a little more effort on parsing, but each should not be too hard to implement.</p>
+<p>At some point, you should make sure your code is robust to white space of various kinds, including spaces ( ) and tabs (\t). In general, the user should be able to put variable amounts of white space before and after commands, arguments, and various operators; however, the operators (redirection and parallel commands) do not require whitespace.</p>
+<p>Check the return codes of all system calls from the very beginning of your work. This will often catch errors in how you are invoking these new system calls. It's also just good programming sense.</p>
+<p>Beat up your own code! You are the best (and in this case, the only) tester of this code. Throw lots of different inputs at it and make sure the shell behaves well. Good code comes through testing; you must run many different tests to make sure things work as desired. Don't be gentle -- other users certainly won't be.</p>
+<p>Finally, keep versions of your code. More advanced programmers will use a source control system such as git. Minimally, when you get a piece of functionality working, make a copy of your .c file (perhaps a subdirectory with a version number, such as v1, v2, etc.). By keeping older, working versions around, you can comfortably work on adding new functionality, safe in the knowledge you can always go back to an older, working version if need be.</p></body></html>
