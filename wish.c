@@ -2,7 +2,13 @@
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
 
-int BUFFER_SIZE = 100; // Size of the input buffer
+int BUFFER_SIZE = 500; // Size of the input buffer
+
+// Clears the standard input buffer, effectively cin.ignore()
+void clear_stdin_buffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
 
 // Prints the current errno value and its description
 // Use this function to throw an explained error without breaking out of the loop
@@ -17,15 +23,23 @@ int main(int argc, char *argv[]) {
     while (!exit) { // Infinite loop to continuously prompt for input
         // Prompt user for input
         printf("wish>");
-        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to bugg chars + null terminator
-            printf("You entered: %s", inputBuffer);
+        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
+            // Remove trailing newline, if it exists
+            char *newline = strchr(inputBuffer, '\n');
+            if (newline) {
+                *newline = '\0';
+            } else {
+                // If no newline, input was too long and was truncated
+                printf("Input too long. Truncating.\n");
+                clear_stdin_buffer();
+            }
+            printf("You entered: '%s'\n", inputBuffer);
         } else {
             // Handle error
             printf("Command not recognised, please try again.\n");
-            if(strerror(errno) != NULL) // Only print errno if it's set
+            if(strerror(errno)) // Only print errno if it exists. By default the value is junk (not necessarily 0)
                 print_errno();
         }
-        inputBuffer[0] = '\0'; // Clear buffer by setting first character to null terminator
     }
     return 0;
 }
