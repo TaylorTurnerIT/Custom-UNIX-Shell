@@ -2,7 +2,7 @@
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
 
-int BUFFER_SIZE = 5; // Size of the input buffer
+int BUFFER_SIZE = 100; // Size of the input buffer
 
 // Prints the current errno value and its description
 // Use this function to throw an explained error without breaking out of the loop
