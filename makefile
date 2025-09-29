@@ -1,11 +1,11 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g
-TARGET = main
+TARGET = wish
 
 SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 
-all: $(TARGET)
+all: $(TARGET) run
 
 $(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
@@ -16,4 +16,7 @@ $(TARGET): $(OBJ)
 clean:
 	rm -f $(OBJ) $(TARGET)
 
-.PHONY: all clean
+run:
+	./$(TARGET) $(ARGS)
+
+.PHONY: all clean run
