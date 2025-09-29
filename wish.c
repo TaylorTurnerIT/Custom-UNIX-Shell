@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
             printf("You entered: %s", inputBuffer);
         } else {
             // Handle error
-            //printf("Command not recognised, please try again.\n");
+            printf("Command not recognised, please try again.\n");
             if(strerror(errno) != NULL) // Only print errno if it's set
                 print_errno();
         }
