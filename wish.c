@@ -19,6 +19,7 @@ void print_errno(void) {
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
     int loop = 0; // Flag to control the loop
+    int is_interactive = 1; // Flag for interactive mode
 
     if (argc > 2) {
         errno = 7; // E2BIG: Argument list too long
@@ -27,29 +28,37 @@ int main(int argc, char *argv[]) {
     } else if (argc == 2) {
         // Batch mode not implemented
         printf("Batch mode not implemented.\n");
+        is_interactive = 0; // Switch to non-interactive mode
         return 1;
+    } else {
+        is_interactive = 1; // Interactive mode
     }
 
     while (!loop) { // Infinite loop to continuously prompt for input
-        // Prompt user for input
-        printf("wish>");
-        if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
-            // Remove trailing newline, if it exists
-            char *newline = strchr(inputBuffer, '\n');
-            if (newline) {
-                *newline = '\0';
+        // --- INTERACTIVE MODE ---
+        if(is_interactive) {
+            printf("wish>");
+            // Prompt user for input
+            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
+                // Remove trailing newline, if it exists
+                char *newline = strchr(inputBuffer, '\n');
+                if (newline) {
+                    *newline = '\0';
+                } else {
+                    // If no newline, input was too long and was truncated
+                    printf("Input too long. Truncating.\n");
+                    clear_stdin_buffer();
+                }
+                printf("You entered: '%s'\n", inputBuffer);
             } else {
-                // If no newline, input was too long and was truncated
-                printf("Input too long. Truncating.\n");
-                clear_stdin_buffer();
+                // Handle error
+                printf("Command not recognised, please try again.\n");
+                if(strerror(errno)) // Only print errno if it exists. By default the value is junk (not necessarily 0)
+                    print_errno();
             }
-            printf("You entered: '%s'\n", inputBuffer);
-        } else {
-            // Handle error
-            printf("Command not recognised, please try again.\n");
-            if(strerror(errno)) // Only print errno if it exists. By default the value is junk (not necessarily 0)
-                print_errno();
         }
+
+        
     }
     return 0;
 }
