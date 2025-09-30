@@ -226,9 +226,9 @@ int main(int argc, char *argv[]) {
                 }
                 if (!found) {
                     printf("Command not recognised, please try again.\n");
-                    if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
-                    print_errno();
-                clear_stdin_buffer();
+                // if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
+                //     print_errno();
+                // clear_stdin_buffer();
                 }
             } else {
                 // Handle EOF (Control+D) or input error
@@ -239,9 +239,9 @@ int main(int argc, char *argv[]) {
                 } else {
                     // Handle other input errors
                     printf("Command not recognised, please try again.\n");
-                    if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
-                        print_errno();
-                    clear_stdin_buffer();
+                    // if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
+                    //     print_errno();
+                    // clear_stdin_buffer();
                 }
             }
         } else {
