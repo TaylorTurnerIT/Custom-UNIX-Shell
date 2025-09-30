@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
+#include <stdlib.h>
 
 int BUFFER_SIZE = 500; // Size of the input buffer
 
@@ -53,8 +54,9 @@ int main(int argc, char *argv[]) {
             } else {
                 // Handle error
                 printf("Command not recognised, please try again.\n");
-                if(strerror(errno)) // Only print errno if it exists. By default the value is junk (not necessarily 0)
+                if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
                     print_errno();
+                clear_stdin_buffer();
             }
         }
 
