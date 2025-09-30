@@ -151,17 +151,6 @@ int main(int argc, char *argv[]) {
     ProgramArray *available_programs = get_all_programs();
     if (available_programs) {
         printf("Found %d programs in system bin directories.\n", available_programs->count);
-        
-        // Optional: Print first few programs as example
-        printf("Sample programs: ");
-        int sample_count = (available_programs->count < 5) ? available_programs->count : 5;
-        for (int i = 0; i < sample_count; i++) {
-            printf("%s ", available_programs->programs[i]);
-        }
-        if (available_programs->count > 5) {
-            printf("... and %d more", available_programs->count - 5);
-        }
-        printf("\n\n");
     } else {
         printf("Failed to load programs from bin directories.\n");
         print_errno();
