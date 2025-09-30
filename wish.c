@@ -11,7 +11,7 @@
 
 int BUFFER_SIZE = 500; // Size of the input buffer
 
-// Prints the current errno value and its description
+// Prints the current errno value and its descr iption
 // Use this function to throw an explained error without breaking out of the loop
 void print_errno() {
     printf("An error has occurred\n%s (Code: %d)\n", strerror(errno), errno);
@@ -194,8 +194,7 @@ int main(int argc, char *argv[]) {
 
     // Argument validation
     if (argc > 2) {
-        errno = E2BIG; // E2BIG: Argument list too long
-        print_errno();
+        printf("An error has occurred\nArgument list too long (Code: %d)\n", E2BIG);
         if (available_programs) free_program_array(available_programs);
         exit(E2BIG);
     } else if (argc == 2) {
@@ -258,9 +257,6 @@ int main(int argc, char *argv[]) {
                 } else {
                     // Handle other input errors
                     printf("Command not recognised, please try again.\n");
-                    // if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
-                    //     print_errno();
-                    // clear_stdin_buffer();
                 }
             }
         } else {
