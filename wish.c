@@ -18,9 +18,9 @@ void print_errno(void) {
 
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
-    int loop = 0; // Flag to control the loop
     int is_interactive = 1; // Flag for interactive mode
 
+    // Argument validation
     if (argc > 2) {
         errno = 7; // E2BIG: Argument list too long
         print_errno();
@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
         is_interactive = 1; // Interactive mode
     }
 
-    while (!loop) { // Infinite loop to continuously prompt for input
+    while (1) { // Infinite loop to continuously prompt for input
         // --- INTERACTIVE MODE ---
         if(is_interactive) {
             printf("wish>");
