@@ -7,6 +7,7 @@
 #include <unistd.h> // For access() function
 #include <sys/types.h> 
 #include <sys/wait.h> // For waitpid()
+#include <limits.h> // For PATH_MAX
 
 int BUFFER_SIZE = 500; // Size of the input buffer
 
@@ -65,25 +66,38 @@ int scan_bin_directory(ProgramArray *arr, const char *dir_path) {
     }
     
     struct dirent *entry;
-    char filepath[1024];
-    
+    // Use dynamic allocation for filepath to avoid truncation
     while ((entry = readdir(dir)) != NULL) {
         // Skip . and .. entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
-        
-        // Construct full path
-        snprintf(filepath, sizeof(filepath), "%s/%s", dir_path, entry->d_name);
-        
+
+        // Calculate required buffer size for full path
+        size_t path_len = strlen(dir_path) + 1 + strlen(entry->d_name) + 1; // '/' + '\0'
+        char *filepath = malloc(path_len);
+        if (!filepath) {
+            closedir(dir);
+            errno = ENOMEM;
+            return -1;
+        }
+        int written = snprintf(filepath, path_len, "%s/%s", dir_path, entry->d_name);
+        if (written < 0 || (size_t)written >= path_len) {
+            // Truncation or error occurred
+            free(filepath);
+            continue;
+        }
+
         // Check if it's a regular file and executable
         struct stat st;
         if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode) && is_executable(filepath)) {
             if (add_program(arr, entry->d_name) != 0) {
+                free(filepath);
                 closedir(dir);
                 return -1;
             }
         }
+        free(filepath);
     }
     
     closedir(dir);
@@ -168,10 +182,9 @@ void clear_stdin_buffer() {
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
     int is_interactive = 1; // Flag for interactive mode
-
-    // Load all available programs at startup
-    printf("Loading available programs...\n");
+    
     ProgramArray *available_programs = get_all_programs();
+
     if (available_programs) {
         printf("Found %d programs in system bin directories.\n", available_programs->count);
     } else {
@@ -181,10 +194,10 @@ int main(int argc, char *argv[]) {
 
     // Argument validation
     if (argc > 2) {
-        errno = 7; // E2BIG: Argument list too long
+        errno = E2BIG; // E2BIG: Argument list too long
         print_errno();
         if (available_programs) free_program_array(available_programs);
-        exit(7);
+        exit(E2BIG);
     } else if (argc == 2) {
         // Batch mode not implemented
         printf("Batch mode not implemented.\n");
@@ -212,23 +225,29 @@ int main(int argc, char *argv[]) {
                 }
                 //printf("You entered: '%s'\n", inputBuffer);
                 
-                // Run the command if it exists in available_programs
+                // Tokenize inputBuffer to extract command and arguments
+                char *tokens[BUFFER_SIZE / 2 + 1]; // Max possible tokens
+                int token_count = 0;
+                char *saveptr;
+                char *token = strtok_r(inputBuffer, " \t", &saveptr);
+                while (token && token_count < (BUFFER_SIZE / 2)) {
+                    tokens[token_count++] = token;
+                    token = strtok_r(NULL, " \t", &saveptr);
+                }
+                tokens[token_count] = NULL;
+
                 int found = 0;
-                if (available_programs) {
+                if (available_programs && token_count > 0) {
                     for (int i = 0; i < available_programs->count; i++) {
-                        if (strcmp(inputBuffer, available_programs->programs[i]) == 0) {
+                        if (strcmp(tokens[0], available_programs->programs[i]) == 0) {
                             found = 1;
-                            char *const args[] = {inputBuffer, NULL}; // Arguments array for execvp
-                            fork_and_run(inputBuffer, args);
+                            fork_and_run(tokens[0], tokens);
                             break;
                         }
                     }
                 }
                 if (!found) {
                     printf("Command not recognised, please try again.\n");
-                // if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
-                //     print_errno();
-                // clear_stdin_buffer();
                 }
             } else {
                 // Handle EOF (Control+D) or input error
