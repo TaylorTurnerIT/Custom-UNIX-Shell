@@ -6,6 +6,7 @@
 #include <sys/stat.h> // For file stat operations
 #include <unistd.h> // For access() function
 #include <sys/types.h> 
+#include <sys/wait.h> // For waitpid()
 
 int BUFFER_SIZE = 500; // Size of the input buffer
 
@@ -154,12 +155,6 @@ void fork_and_run(const char *program, char *const argv[]) {
         // Parent process
         int status;
         waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            printf("Program %s exited with status %d\n", program, WEXITSTATUS(status));
-        } else {
-            printf("Program %s terminated abnormally\n", program);
-            print_errno();
-        }
     }
 }
 
@@ -215,8 +210,26 @@ int main(int argc, char *argv[]) {
                     printf("Input too long. Truncating.\n");
                     clear_stdin_buffer();
                 }
-                printf("You entered: '%s'\n", inputBuffer);
+                //printf("You entered: '%s'\n", inputBuffer);
                 
+                // Run the command if it exists in available_programs
+                int found = 0;
+                if (available_programs) {
+                    for (int i = 0; i < available_programs->count; i++) {
+                        if (strcmp(inputBuffer, available_programs->programs[i]) == 0) {
+                            found = 1;
+                            char *const args[] = {inputBuffer, NULL}; // Arguments array for execvp
+                            fork_and_run(inputBuffer, args);
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    printf("Command not recognised, please try again.\n");
+                    if(strerror(errno) && errno != 0) // Only print errno if it exists. By default the value is junk (not necessarily 0)
+                    print_errno();
+                clear_stdin_buffer();
+                }
             } else {
                 // Handle error
                 printf("Command not recognised, please try again.\n");
