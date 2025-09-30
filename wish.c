@@ -13,14 +13,24 @@ void clear_stdin_buffer() {
 // Prints the current errno value and its description
 // Use this function to throw an explained error without breaking out of the loop
 void print_errno(void) {
-    printf("Error Code: %s (%d)\n", strerror(errno), errno);
+    printf("ERROR: %s (Code: %d)\n", strerror(errno), errno);
 }
 
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
-    int exit = 0; // Flag to control the loop
+    int loop = 0; // Flag to control the loop
 
-    while (!exit) { // Infinite loop to continuously prompt for input
+    if (argc > 2) {
+        errno = 7; // E2BIG: Argument list too long
+        print_errno();
+        return 7;
+    } else if (argc == 2) {
+        // Batch mode not implemented
+        printf("Batch mode not implemented.\n");
+        return 1;
+    }
+
+    while (!loop) { // Infinite loop to continuously prompt for input
         // Prompt user for input
         printf("wish>");
         if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
