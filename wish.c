@@ -5,8 +5,15 @@
 #include <dirent.h> // For directory operations
 #include <sys/stat.h> // For file stat operations
 #include <unistd.h> // For access() function
+#include <sys/types.h> 
 
 int BUFFER_SIZE = 500; // Size of the input buffer
+
+// Prints the current errno value and its description
+// Use this function to throw an explained error without breaking out of the loop
+void print_errno() {
+    printf("An error has occurred\n%s (Code: %d)\n", strerror(errno), errno);
+}
 
 // Structure to hold the array of programs
 typedef struct {
@@ -130,17 +137,38 @@ void free_program_array(ProgramArray *arr) {
     }
 }
 
+// Fork the current process and run parameter program in child process. Awaits completion.
+void fork_and_run(const char *program, char *const argv[]) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        // Fork failed
+        print_errno();
+        return;
+    } else if (pid == 0) {
+        // Child process
+        execvp(program, argv);
+        // If execvp returns, an error occurred
+        print_errno();
+        exit(1);
+    } else {
+        // Parent process
+        int status;
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            printf("Program %s exited with status %d\n", program, WEXITSTATUS(status));
+        } else {
+            printf("Program %s terminated abnormally\n", program);
+            print_errno();
+        }
+    }
+}
+
 // Clears the standard input buffer, effectively cin.ignore()
 void clear_stdin_buffer() {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
-// Prints the current errno value and its description
-// Use this function to throw an explained error without breaking out of the loop
-void print_errno() {
-    printf("An error has occurred\n%s (Code: %d)\n", strerror(errno), errno);
-}
 
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
@@ -188,6 +216,7 @@ int main(int argc, char *argv[]) {
                     clear_stdin_buffer();
                 }
                 printf("You entered: '%s'\n", inputBuffer);
+                
             } else {
                 // Handle error
                 printf("Command not recognised, please try again.\n");
