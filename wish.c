@@ -58,9 +58,11 @@ int main(int argc, char *argv[]) {
                     print_errno();
                 clear_stdin_buffer();
             }
+        } else {
+            // --- BATCH MODE ---
+            // Not implemented
+            exit(1);
         }
-
-        
     }
     return 0;
 }
