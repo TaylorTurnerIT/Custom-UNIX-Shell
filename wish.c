@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
     } else if (argc == 2) {
         // Batch mode not implemented
         printf("Batch mode not implemented.\n");
-        is_interactive = 0; // Switch to non-interactive mode
+        is_interactive = 0; // Switch to batch mode
         return 1;
     } else {
         is_interactive = 1; // Interactive mode
