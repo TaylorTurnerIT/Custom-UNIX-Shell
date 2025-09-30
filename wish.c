@@ -2,8 +2,133 @@
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
 #include <stdlib.h>
+#include <dirent.h> // For directory operations
+#include <sys/stat.h> // For file stat operations
+#include <unistd.h> // For access() function
 
 int BUFFER_SIZE = 500; // Size of the input buffer
+
+// Structure to hold the array of programs
+typedef struct {
+    char **programs;
+    int count;
+    int capacity;
+} ProgramArray;
+
+// Function to check if a file is executable
+int is_executable(const char *filepath) {
+    struct stat st;
+    if (stat(filepath, &st) == 0) {
+        return (st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH);
+    }
+    return 0;
+}
+
+// Function to add a program to the array
+int add_program(ProgramArray *arr, const char *program) {
+    if (arr->count >= arr->capacity) {
+        // Resize array if needed
+        arr->capacity *= 2;
+        char **new_programs = realloc(arr->programs, arr->capacity * sizeof(char*));
+        if (!new_programs) {
+            errno = ENOMEM;
+            return -1;
+        }
+        arr->programs = new_programs;
+    }
+    
+    // Allocate memory for the program name
+    arr->programs[arr->count] = malloc(strlen(program) + 1);
+    if (!arr->programs[arr->count]) {
+        errno = ENOMEM;
+        return -1;
+    }
+    
+    strcpy(arr->programs[arr->count], program);
+    arr->count++;
+    return 0;
+}
+
+// Function to scan a directory for executable programs
+int scan_bin_directory(ProgramArray *arr, const char *dir_path) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        return -1; // Directory doesn't exist or can't be opened
+    }
+    
+    struct dirent *entry;
+    char filepath[1024];
+    
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and .. entries
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        // Construct full path
+        snprintf(filepath, sizeof(filepath), "%s/%s", dir_path, entry->d_name);
+        
+        // Check if it's a regular file and executable
+        struct stat st;
+        if (stat(filepath, &st) == 0 && S_ISREG(st.st_mode) && is_executable(filepath)) {
+            if (add_program(arr, entry->d_name) != 0) {
+                closedir(dir);
+                return -1;
+            }
+        }
+    }
+    
+    closedir(dir);
+    return 0;
+}
+
+// Function to get all programs from common bin directories
+ProgramArray* get_all_programs() {
+    ProgramArray *programs = malloc(sizeof(ProgramArray));
+    if (!programs) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    
+    // Initialize the array
+    programs->capacity = 100;
+    programs->count = 0;
+    programs->programs = malloc(programs->capacity * sizeof(char*));
+    if (!programs->programs) {
+        free(programs);
+        errno = ENOMEM;
+        return NULL;
+    }
+    
+    // Common bin directories to scan
+    const char *bin_dirs[] = {
+        "/bin",
+        "/usr/bin",
+        "/usr/local/bin",
+        "/sbin",
+        "/usr/sbin",
+        NULL
+    };
+    
+    // Scan each directory
+    for (int i = 0; bin_dirs[i] != NULL; i++) {
+        scan_bin_directory(programs, bin_dirs[i]);
+        // Continue even if one directory fails
+    }
+    
+    return programs;
+}
+
+// Function to free the program array
+void free_program_array(ProgramArray *arr) {
+    if (arr) {
+        for (int i = 0; i < arr->count; i++) {
+            free(arr->programs[i]);
+        }
+        free(arr->programs);
+        free(arr);
+    }
+}
 
 // Clears the standard input buffer, effectively cin.ignore()
 void clear_stdin_buffer() {
@@ -21,15 +146,38 @@ int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
     int is_interactive = 1; // Flag for interactive mode
 
+    // Load all available programs at startup
+    printf("Loading available programs...\n");
+    ProgramArray *available_programs = get_all_programs();
+    if (available_programs) {
+        printf("Found %d programs in system bin directories.\n", available_programs->count);
+        
+        // Optional: Print first few programs as example
+        printf("Sample programs: ");
+        int sample_count = (available_programs->count < 5) ? available_programs->count : 5;
+        for (int i = 0; i < sample_count; i++) {
+            printf("%s ", available_programs->programs[i]);
+        }
+        if (available_programs->count > 5) {
+            printf("... and %d more", available_programs->count - 5);
+        }
+        printf("\n\n");
+    } else {
+        printf("Failed to load programs from bin directories.\n");
+        print_errno();
+    }
+
     // Argument validation
     if (argc > 2) {
         errno = 7; // E2BIG: Argument list too long
         print_errno();
+        if (available_programs) free_program_array(available_programs);
         exit(7);
     } else if (argc == 2) {
         // Batch mode not implemented
         printf("Batch mode not implemented.\n");
         is_interactive = 0; // Switch to batch mode
+        if (available_programs) free_program_array(available_programs);
         exit(1);
     } else {
         is_interactive = 1; // Interactive mode
@@ -63,6 +211,11 @@ int main(int argc, char *argv[]) {
             // Not implemented
             exit(1);
         }
+    }
+    
+    // Cleanup before exit
+    if (available_programs) {
+        free_program_array(available_programs);
     }
     return 0;
 }
