@@ -24,12 +24,12 @@ int main(int argc, char *argv[]) {
     if (argc > 2) {
         errno = 7; // E2BIG: Argument list too long
         print_errno();
-        return 7;
+        exit(7);
     } else if (argc == 2) {
         // Batch mode not implemented
         printf("Batch mode not implemented.\n");
         is_interactive = 0; // Switch to batch mode
-        return 1;
+        exit(1);
     } else {
         is_interactive = 1; // Interactive mode
     }
