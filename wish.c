@@ -13,7 +13,7 @@ void clear_stdin_buffer() {
 // Prints the current errno value and its description
 // Use this function to throw an explained error without breaking out of the loop
 void print_errno() {
-    printf("ERROR: %s (Code: %d)\n", strerror(errno), errno);
+    printf("An error has occurred\n%s (Code: %d)\n", strerror(errno), errno);
 }
 
 int main(int argc, char *argv[]) {
