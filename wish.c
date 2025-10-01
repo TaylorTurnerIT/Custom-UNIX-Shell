@@ -39,9 +39,10 @@ int add_program(ProgramArray *arr, const char *program) {
     if (arr->count >= arr->capacity) {
         // Resize array if needed
         arr->capacity *= 2;
+        // new_programs is scaled to the new capacity by multiplying by sizeof(char*) and the new capacity
         char **new_programs = realloc(arr->programs, arr->capacity * sizeof(char*));
         if (!new_programs) {
-            errno = ENOMEM;
+            errno = ENOMEM; // bbnomem
             return -1;
         }
         arr->programs = new_programs;
@@ -50,7 +51,7 @@ int add_program(ProgramArray *arr, const char *program) {
     // Allocate memory for the program name
     arr->programs[arr->count] = malloc(strlen(program) + 1);
     if (!arr->programs[arr->count]) {
-        errno = ENOMEM;
+        errno = ENOMEM; // someone said its a bad idea to set this value explicitly. If you find a better way, go for it.
         return -1;
     }
     
