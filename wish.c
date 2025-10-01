@@ -9,7 +9,7 @@
 #include <sys/wait.h> // For waitpid()
 #include <limits.h> // For PATH_MAX
 
-int BUFFER_SIZE = 500; // Size of the input buffer
+int BUFFER_SIZE = 4096; // Size of the input buffer
 
 // Prints the current errno value and its descr iption
 // Use this function to throw an explained error without breaking out of the loop
