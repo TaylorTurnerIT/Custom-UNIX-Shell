@@ -14,7 +14,7 @@ int BUFFER_SIZE = 500; // Size of the input buffer
 // Prints the current errno value and its descr iption
 // Use this function to throw an explained error without breaking out of the loop
 void print_errno() {
-    printf("An error has occurred\n%s (Code: %d)\n", strerror(errno), errno);
+    printf("An error has occurred. %s (Code: %d)\n", strerror(errno), errno);
 }
 
 // Structure to hold the array of programs
