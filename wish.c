@@ -26,8 +26,9 @@ typedef struct {
 
 // Function to check if a file is executable
 int is_executable(const char *filepath) {
-    struct stat st;
-    if (stat(filepath, &st) == 0) {
+    struct stat st; // st is a struct that holds information about the file
+    if (stat(filepath, &st) == 0) { // stat() returns 0 on success. Success means file exists.
+        // Check if execute permission is set (user, group, or others)
         return (st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH);
     }
     return 0;
