@@ -237,6 +237,16 @@ int main(int argc, char *argv[]) {
                 }
                 tokens[token_count] = NULL;
 
+                // Check for built-in commands first
+                if (token_count > 0 && strcmp(tokens[0], "exit") == 0) {
+                    if (token_count > 1) {
+                        printf("An error has occurred\n"); // exit takes no arguments
+                    } else {
+                        if (available_programs) free_program_array(available_programs);
+                        exit(0);
+                    }
+                }
+
                 int found = 0;
                 if (available_programs && token_count > 0) {
                     for (int i = 0; i < available_programs->count; i++) {
