@@ -246,6 +246,18 @@ int main(int argc, char *argv[]) {
                         exit(0);
                     }
                 }
+                // Built-in: cd
+                if (token_count > 0 && strcmp(tokens[0], "cd") == 0) {
+                    if (token_count != 2) {
+                        printf("An error has occurred\n");  // cd must have exactly 1 arg
+                    } else {
+                        if (chdir(tokens[1]) != 0) {
+                            printf("An error has occurred\n");  // invalid directory
+                        }
+                    }
+                    continue; // skip to next loop iteration
+                }
+
 
                 int found = 0;
                 if (available_programs && token_count > 0) {
