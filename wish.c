@@ -1,7 +1,4 @@
-// Shell's search path (dynamic)
-static char **shell_paths = NULL;
-static int shell_path_count = 0;
-
+#include <stddef.h>
 #include <stdio.h>
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
@@ -12,6 +9,10 @@ static int shell_path_count = 0;
 #include <sys/types.h> 
 #include <sys/wait.h> // For waitpid()
 #include <limits.h> // For PATH_MAX
+
+// Shell's search path (dynamic)
+static char **shell_paths = NULL;
+static int shell_path_count = 0;
 
 int BUFFER_SIZE = 4096; // Size of the input buffer
 
@@ -289,11 +290,15 @@ int main(int argc, char *argv[]) {
 
 
 
+        // If no paths are set, print error and skip execution
+        if (shell_path_count == 0) {
+            write(STDERR_FILENO, "An error has occurred\n", 22);
+            continue;
+        }
         int executed = 0;
         for (int i = 0; i < shell_path_count; i++) {
             char fullpath[1024];
             snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
-        
             if (access(fullpath, X_OK) == 0) {
                 pid_t pid = fork();
                 if (pid == 0) {
@@ -308,9 +313,8 @@ int main(int argc, char *argv[]) {
                 break;
             }
         }
-        
         if (!executed) {
-            write(STDERR_FILENO, "An error has occurred\n", 21);
+            write(STDERR_FILENO, "An error has occurred\n", 22);
         }
             } else {
                 // Handle EOF (Control+D) or input error
