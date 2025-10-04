@@ -1,3 +1,7 @@
+// Shell's search path (dynamic)
+static char **shell_paths = NULL;
+static int shell_path_count = 0;
+
 #include <stdio.h>
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
 #include <string.h> // For strerror()
@@ -187,6 +191,12 @@ int main(int argc, char *argv[]) {
     
     ProgramArray *available_programs = get_all_programs();
 
+    // Initialize shell path with default: /bin
+    shell_path_count = 1;
+    shell_paths = malloc(sizeof(char*));
+    shell_paths[0] = strdup("/bin");
+
+
     if (available_programs) {
         printf("Found %d programs in system bin directories.\n", available_programs->count);
     } else {
@@ -258,20 +268,50 @@ int main(int argc, char *argv[]) {
                     continue; // skip to next loop iteration
                 }
 
-
-                int found = 0;
-                if (available_programs && token_count > 0) {
-                    for (int i = 0; i < available_programs->count; i++) {
-                        if (strcmp(tokens[0], available_programs->programs[i]) == 0) {
-                            found = 1;
-                            fork_and_run(tokens[0], tokens);
-                            break;
-                        }
+                // Built-in: path
+                if (strcmp(tokens[0], "path") == 0) {
+                    // free old path
+                    for (int i = 0; i < shell_path_count; i++) {
+                        free(shell_paths[i]);
                     }
+                    free(shell_paths);
+                
+                    // new count is (token_count - 1) because first token is "path"
+                    shell_path_count = token_count - 1;
+                    shell_paths = malloc(shell_path_count * sizeof(char*));
+                
+                    for (int i = 0; i < shell_path_count; i++) {
+                        shell_paths[i] = strdup(tokens[i+1]);
+                    }
+                
+                    continue; // done with built-in
                 }
-                if (!found) {
-                    printf("Command not recognised, please try again.\n");
+
+
+
+        int executed = 0;
+        for (int i = 0; i < shell_path_count; i++) {
+            char fullpath[1024];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
+        
+            if (access(fullpath, X_OK) == 0) {
+                pid_t pid = fork();
+                if (pid == 0) {
+                    execv(fullpath, tokens);
+                    // if execv returns, it failed
+                    write(STDERR_FILENO, "An error has occurred\n", 21);
+                    exit(1);
+                } else {
+                    wait(NULL);
                 }
+                executed = 1;
+                break;
+            }
+        }
+        
+        if (!executed) {
+            write(STDERR_FILENO, "An error has occurred\n", 21);
+        }
             } else {
                 // Handle EOF (Control+D) or input error
                 if (feof(stdin)) {
