@@ -14,6 +14,24 @@
 static char **shell_paths = NULL;
 static int shell_path_count = 0;
 
+#define BUFFER_SIZE 512
+
+// Splits a line into tokens separated by spaces/tabs.
+// Returns the number of tokens parsed.
+int tokenize_input(char *input, char **tokens, int max_tokens) {
+    int token_count = 0;
+    char *saveptr;
+    char *token = strtok_r(input, " \t", &saveptr);
+
+    while (token != NULL && token_count < max_tokens - 1) {
+        tokens[token_count++] = token;
+        token = strtok_r(NULL, " \t", &saveptr);
+    }
+    tokens[token_count] = NULL; // Null-terminate the list
+
+    return token_count;
+}
+
 #include <unistd.h>  /* for write(), STDERR_FILENO */
 #include <string.h>  /* for strcmp */
 #include <stdlib.h>  /* for malloc/realloc/free */
@@ -100,7 +118,7 @@ static int handle_builtin(char **argv) {
     return 0;
 }
 
-int BUFFER_SIZE = 4096; // Size of the input buffer
+// BUFFER_SIZE is defined as a macro at the top
 
 // Prints the current errno value and its descr iption
 // Use this function to throw an explained error without breaking out of the loop
@@ -324,21 +342,19 @@ int main(int argc, char *argv[]) {
                 //printf("You entered: '%s'\n", inputBuffer);
                 
                 // Tokenize inputBuffer to extract command and arguments
-                char *tokens[BUFFER_SIZE / 2 + 1]; // Max possible tokens
-                int token_count = 0;
-                char *saveptr;
-                char *token = strtok_r(inputBuffer, " \t", &saveptr);
-                while (token && token_count < (BUFFER_SIZE / 2)) {
-                    tokens[token_count++] = token;
-                    token = strtok_r(NULL, " \t", &saveptr);
+
+                char *tokens[BUFFER_SIZE / 2 + 1];
+                int token_count = tokenize_input(inputBuffer, tokens, BUFFER_SIZE / 2 + 1);
+
+                // Skip empty input lines
+                if (token_count == 0) {
+                    continue;
                 }
-                tokens[token_count] = NULL;
 
-
-                    // Use handle_builtin for all builtins
-                    if (token_count > 0 && handle_builtin(tokens)) {
-                        continue; // builtin handled, do not fork
-                    }
+                // Use handle_builtin for all builtins
+                if (handle_builtin(tokens)) {
+                    continue; // builtin handled, do not fork
+                }
 
 
 
