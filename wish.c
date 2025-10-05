@@ -14,6 +14,92 @@
 static char **shell_paths = NULL;
 static int shell_path_count = 0;
 
+#include <unistd.h>  /* for write(), STDERR_FILENO */
+#include <string.h>  /* for strcmp */
+#include <stdlib.h>  /* for malloc/realloc/free */
+
+static inline void _shell_error_msg(void) {
+    const char msg[] = "An error has occurred\n";
+    write(STDERR_FILENO, msg, sizeof(msg) - 1);
+}
+
+static int handle_builtin(char **argv) {
+    if (!argv || !argv[0]) return 0;
+
+    /* --- exit: takes zero args --- */
+    if (strcmp(argv[0], "exit") == 0) {
+        if (argv[1] != NULL) {
+            _shell_error_msg();   /* exit with args -> shell error, but do not exit */
+            return 1;             /* handled (error) */
+        } else {
+            /* Normal termination of shell. We intentionally do not try to free every
+               allocation here — the OS will reclaim memory on process exit. If you
+               want to free available_programs, make it global and free it here. */
+            exit(0);
+        }
+    }
+
+    /* --- cd: takes exactly one arg --- */
+    if (strcmp(argv[0], "cd") == 0) {
+        /* argc must be exactly 2 (argv[0] + one arg) */
+        if (!argv[1] || argv[2] != NULL) {
+            _shell_error_msg();
+            return 1; /* handled (error) */
+        }
+        if (chdir(argv[1]) != 0) {
+            /* chdir failed -> print the required single error message */
+            _shell_error_msg();
+        }
+        return 1; /* handled successfully (or printed error) */
+    }
+
+    /* --- path: overwrite shell_paths with argv[1..] --- */
+    if (strcmp(argv[0], "path") == 0) {
+        /* free existing path entries */
+        for (int i = 0; i < shell_path_count; ++i) {
+            free(shell_paths[i]);
+        }
+        free(shell_paths);
+        shell_paths = NULL;
+        shell_path_count = 0;
+
+        /* Count new entries (argv[1], argv[2], ... until NULL) */
+        int n = 0;
+        while (argv[1 + n]) ++n;
+
+        if (n == 0) {
+            /* Path set to empty: valid — no executables available (per spec) */
+            shell_paths = NULL;
+            shell_path_count = 0;
+            return 1;
+        }
+
+        shell_paths = malloc(sizeof(char*) * n);
+        if (!shell_paths) {
+            _shell_error_msg();
+            shell_path_count = 0;
+            return 1;
+        }
+        for (int i = 0; i < n; ++i) {
+            shell_paths[i] = strdup(argv[1 + i]);
+            if (!shell_paths[i]) {
+                /* allocation failure: clean up and report error */
+                for (int j = 0; j < i; ++j) free(shell_paths[j]);
+                free(shell_paths);
+                shell_paths = NULL;
+                shell_path_count = 0;
+                _shell_error_msg();
+                return 1;
+            }
+        }
+        shell_path_count = n;
+        return 1;
+    }
+
+    /* Not a builtin */
+    return 0;
+}
+
 int BUFFER_SIZE = 4096; // Size of the input buffer
 
 // Prints the current errno value and its descr iption
@@ -248,45 +334,11 @@ int main(int argc, char *argv[]) {
                 }
                 tokens[token_count] = NULL;
 
-                // Check for built-in commands first
-                if (token_count > 0 && strcmp(tokens[0], "exit") == 0) {
-                    if (token_count > 1) {
-                        printf("An error has occurred\n"); // exit takes no arguments
-                    } else {
-                        if (available_programs) free_program_array(available_programs);
-                        exit(0);
-                    }
-                }
-                // Built-in: cd
-                if (token_count > 0 && strcmp(tokens[0], "cd") == 0) {
-                    if (token_count != 2) {
-                        printf("An error has occurred\n");  // cd must have exactly 1 arg
-                    } else {
-                        if (chdir(tokens[1]) != 0) {
-                            printf("An error has occurred\n");  // invalid directory
-                        }
-                    }
-                    continue; // skip to next loop iteration
-                }
 
-                // Built-in: path
-                if (strcmp(tokens[0], "path") == 0) {
-                    // free old path
-                    for (int i = 0; i < shell_path_count; i++) {
-                        free(shell_paths[i]);
+                    // Use handle_builtin for all builtins
+                    if (token_count > 0 && handle_builtin(tokens)) {
+                        continue; // builtin handled, do not fork
                     }
-                    free(shell_paths);
-                
-                    // new count is (token_count - 1) because first token is "path"
-                    shell_path_count = token_count - 1;
-                    shell_paths = malloc(shell_path_count * sizeof(char*));
-                
-                    for (int i = 0; i < shell_path_count; i++) {
-                        shell_paths[i] = strdup(tokens[i+1]);
-                    }
-                
-                    continue; // done with built-in
-                }
 
 
 
