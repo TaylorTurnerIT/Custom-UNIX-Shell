@@ -22,15 +22,19 @@ static int shell_path_count = 0;
 // Returns the number of tokens parsed.
 int tokenize_input(char *input, char **tokens, int max_tokens) {
     int token_count = 0;
-    char *saveptr;
-    char *token = strtok_r(input, " \t", &saveptr);
+    char *token;
 
-    while (token != NULL && token_count < max_tokens - 1) {
-        tokens[token_count++] = token;
-        token = strtok_r(NULL, " \t", &saveptr);
+    while ((token = strsep(&input, " \t")) != NULL) {
+        // Skip empty tokens from consecutive spaces/tabs
+        if (*token == '\0') continue;
+        if (token_count < max_tokens - 1) {
+            tokens[token_count++] = token;
+        } else {
+            break;
+        }
     }
-    tokens[token_count] = NULL; // Null-terminate the list
 
+    tokens[token_count] = NULL; // null-terminate
     return token_count;
 }
 
@@ -507,10 +511,9 @@ int main(int argc, char *argv[]) {
                         continue;
                     }
                     int executed = 0;
-                    for (int j = 0; j < shell_path_count; j++) {
-                        char fullpath[1024];
-                        snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[j], tokens[0]);
-                        if (access(fullpath, X_OK) == 0) {
+                    // Check for absolute or relative path
+                    if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
+                        if (access(tokens[0], X_OK) == 0) {
                             pid_t pid = fork();
                             if (pid == 0) {
                                 // Child: handle redirection
@@ -521,14 +524,38 @@ int main(int argc, char *argv[]) {
                                     if (dup2(fd, STDERR_FILENO) < 0) { _shell_error_msg(); _exit(1); }
                                     close(fd);
                                 }
-                                execv(fullpath, tokens);
+                                execv(tokens[0], tokens);
                                 _shell_error_msg();
                                 _exit(1);
                             } else {
                                 wait(NULL);
                             }
                             executed = 1;
-                            break;
+                        }
+                    } else {
+                        for (int j = 0; j < shell_path_count; j++) {
+                            char fullpath[1024];
+                            snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[j], tokens[0]);
+                            if (access(fullpath, X_OK) == 0) {
+                                pid_t pid = fork();
+                                if (pid == 0) {
+                                    // Child: handle redirection
+                                    if (redir_target) {
+                                        int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+                                        if (fd < 0) { _shell_error_msg(); _exit(1); }
+                                        if (dup2(fd, STDOUT_FILENO) < 0) { _shell_error_msg(); _exit(1); }
+                                        if (dup2(fd, STDERR_FILENO) < 0) { _shell_error_msg(); _exit(1); }
+                                        close(fd);
+                                    }
+                                    execv(fullpath, tokens);
+                                    _shell_error_msg();
+                                    _exit(1);
+                                } else {
+                                    wait(NULL);
+                                }
+                                executed = 1;
+                                break;
+                            }
                         }
                     }
                     if (!executed) {
@@ -594,21 +621,35 @@ int main(int argc, char *argv[]) {
             continue;
         }
         int executed = 0;
-        for (int i = 0; i < shell_path_count; i++) {
-            char fullpath[1024];
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
-            if (access(fullpath, X_OK) == 0) {
+        // Check for absolute or relative path
+        if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
+            if (access(tokens[0], X_OK) == 0) {
                 pid_t pid = fork();
                 if (pid == 0) {
-                    execv(fullpath, tokens);
-                    // if execv returns, it failed
+                    execv(tokens[0], tokens);
                     write(STDERR_FILENO, "An error has occurred\n", 21);
                     exit(1);
                 } else {
                     wait(NULL);
                 }
                 executed = 1;
-                break;
+            }
+        } else {
+            for (int i = 0; i < shell_path_count; i++) {
+                char fullpath[1024];
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
+                if (access(fullpath, X_OK) == 0) {
+                    pid_t pid = fork();
+                    if (pid == 0) {
+                        execv(fullpath, tokens);
+                        write(STDERR_FILENO, "An error has occurred\n", 21);
+                        exit(1);
+                    } else {
+                        wait(NULL);
+                    }
+                    executed = 1;
+                    break;
+                }
             }
         }
         if (!executed) {
