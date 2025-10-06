@@ -25,7 +25,5 @@ run: $(TARGET)
 clean:
 	rm -f $(OBJ) $(TARGET)
 
-run:
-	./$(TARGET) $(ARGS)
 
 .PHONY: all clean run parallel_test
