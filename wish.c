@@ -323,35 +323,65 @@ static char **split_parallel_commands(char *linecopy, int *out_count) {
  * Accepts forms: "cmd > file", "cmd>file", "cmd> file", etc.
  * Rejects: multiple '>' or missing filename or extra tokens after filename.
  */
+/* parse_redirection:
+ * - cmd: mutable command string (will be truncated before '>' if redirection present)
+ * - out_target: set to malloc'd filename string on success, or NULL if no redirection
+ * Returns 0 on success, -1 on syntax error.
+ *
+ * Rules enforced:
+ *  - only one '>' allowed
+ *  - '>' cannot be the first non-whitespace token
+ *  - exactly one filename token must follow '>' and nothing else (except whitespace)
+ */
 static int parse_redirection(char *cmd, char **out_target) {
     *out_target = NULL;
-    char *gt = strchr(cmd, '>');
-    if (!gt) return 0; /* no redirection */
+    if (!cmd) return 0;
 
-    /* Ensure only one '>' */
-    if (strchr(gt + 1, '>')) return -1;
+    /* find first '>' */
+    char *first = strchr(cmd, '>');
+    if (!first) return 0; /* no redirection */
 
-    /* Isolate RHS (filename) */
-    *gt = '\0';              /* truncate command portion */
-    char *rhs = trim_whitespace(gt + 1);
-    if (!rhs || *rhs == '\0') return -1; /* missing filename */
+    /* ensure only one '>' occurs */
+    if (strchr(first + 1, '>')) return -1;
 
-    /* filename is first token; there must be no non-whitespace after it */
+    /* Ensure there's something before '>' (non-whitespace) */
+    /* Temporarily copy left side to test */
+    char *left = cmd;
+    while (*left == ' ' || *left == '\t') left++;
+    if (left == first) return -1; /* '>' is first non-whitespace token */
+
+    /* Now isolate RHS and check filename rules */
+    char *rhs = first + 1;
+    /* skip whitespace */
+    while (*rhs == ' ' || *rhs == '\t') rhs++;
+    if (*rhs == '\0') return -1; /* missing filename */
+
+    /* filename is until next whitespace (space/tab/newline) */
     char *p = rhs;
-    while (*p != '\0' && *p != ' ' && *p != '\t') p++;
+    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n') p++;
+
+    /* if there's more non-whitespace after the filename -> syntax error */
     if (*p != '\0') {
-        /* skip whitespace after filename and ensure nothing else remains */
         char *after = p;
-        while (*after == ' ' || *after == '\t') after++;
+        while (*after == ' ' || *after == '\t' || *after == '\n') after++;
         if (*after != '\0') return -1; /* extra token after filename */
-        *p = '\0'; /* terminate filename */
+        /* otherwise terminate filename */
+        *p = '\0';
     }
 
+    /* Now truncate cmd at the '>' (remove right side) */
+    *first = '\0';
+    /* Trim trailing whitespace on left side (optional) */
+    /* move trimmed left to front if needed */
+    char *left_trim = left;
+    char *end = left_trim + strlen(left_trim) - 1;
+    while (end > left_trim && (*end == ' ' || *end == '\t' || *end == '\n')) { *end = '\0'; end--; }
+    if (left_trim != cmd) memmove(cmd, left_trim, strlen(left_trim) + 1);
+
+    /* Duplicate filename for caller */
     *out_target = strdup(rhs);
-    if (!*out_target) { _shell_error_msg(); return -1; }
-    /* trim whitespace on the cmd side and shift it if needed */
-    char *cmd_trim = trim_whitespace(cmd);
-    if (cmd_trim != cmd) memmove(cmd, cmd_trim, strlen(cmd_trim) + 1);
+    if (!*out_target) return -1; /* treat allocation failure as syntax-like error */
+
     return 0;
 }
 // Fork the current process and run parameter program in child process. Awaits completion.
