@@ -7,8 +7,8 @@ OBJ = $(SRC:.c=.o)
 
 all: $(TARGET) run
 
-$(TARGET): wish.o parallel.o parsing.o
-	$(CC) $(CFLAGS) -o $@ wish.o parallel.o parsing.o
+$(TARGET): wish.o parallel.o 
+	$(CC) $(CFLAGS) -o $@ wish.o parallel.o 
 
 parallel_test: parallel_test.o parallel.o
 	$(CC) $(CFLAGS) -o $@ parallel_test.o parallel.o

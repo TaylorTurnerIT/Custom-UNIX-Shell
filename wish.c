@@ -12,14 +12,19 @@
 
 #include <fcntl.h> // For open(), O_CREAT, O_WRONLY, O_TRUNC
 
+
+static char **split_parallel_commands(char *linecopy, int *out_count);
+static int parse_redirection(char *cmd, char **out_target);
+static char *trim_whitespace(char *s);
+
+
 // Shell's search path (dynamic)
 static char **shell_paths = NULL;
 static int shell_path_count = 0;
 
 #define BUFFER_SIZE 512
 
-<<<<<<< HEAD
-=======
+
 // Splits a line into tokens separated by spaces/tabs.
 // Returns the number of tokens parsed.
 int tokenize_input(char *input, char **tokens, int max_tokens) {
@@ -40,7 +45,7 @@ int tokenize_input(char *input, char **tokens, int max_tokens) {
     return token_count;
 }
 
->>>>>>> parent of b52abce (Merge pull request #16 from TaylorTurnerIT/ITUS-33)
+
 #include <unistd.h>  /* for write(), STDERR_FILENO */
 #include <string.h>  /* for strcmp */
 #include <stdlib.h>  /* for malloc/realloc/free */
@@ -272,128 +277,6 @@ void free_program_array(ProgramArray *arr) {
     }
 }
 
-<<<<<<< HEAD
-=======
-/* Trim leading and trailing spaces/tabs/newlines in-place.
- * Returns pointer to the first non-whitespace char (may be same pointer).
- * Modifies the string to terminate after the last non-whitespace char.
- */
-static char *trim_whitespace(char *s) {
-    if (!s) return s;
-    // skip leading whitespace
-    while (*s == ' ' || *s == '\t' || *s == '\n') s++;
-    if (*s == '\0') return s;
-    // trim trailing
-    char *end = s + strlen(s) - 1;
-    while (end > s && (*end == ' ' || *end == '\t' || *end == '\n')) {
-        *end = '\0';
-        end--;
-    }
-    return s;
-}
-
-/* Split input line into command parts on '&'.
- * - linecopy must be a writable copy (e.g., strdup(inputBuffer))
- * - returns a malloc'd array (NULL-terminated) of pointers into linecopy
- * - out_count will be set to number of parts
- * Caller must free the returned array and the original linecopy.
- */
-static char **split_parallel_commands(char *linecopy, int *out_count) {
-    size_t cap = 8, cnt = 0;
-    char **parts = malloc(sizeof(char*) * cap);
-    if (!parts) { _shell_error_msg(); return NULL; }
-
-    char *p = linecopy;
-    while (1) {
-        char *amp = strchr(p, '&');
-        if (!amp) {
-            char *part = trim_whitespace(p);
-            if (cnt >= cap) { cap *= 2; parts = realloc(parts, sizeof(char*) * cap); }
-            parts[cnt++] = part;
-            break;
-        }
-        *amp = '\0';
-        char *part = trim_whitespace(p);
-        if (cnt >= cap) { cap *= 2; parts = realloc(parts, sizeof(char*) * cap); }
-        parts[cnt++] = part;
-        p = amp + 1;
-    }
-    parts = realloc(parts, sizeof(char*) * (cnt + 1));
-    parts[cnt] = NULL;
-    if (out_count) *out_count = (int)cnt;
-    return parts;
-}
-
-/* Parse a single '>' redirection in-place within cmd.
- * - cmd is mutable and will be truncated so it contains only the command portion.
- * - On success, *out_target will be set to a malloc'd filename (caller frees it) or NULL if no redirection.
- * - Returns 0 on success, -1 on syntax error.
- *
- * Accepts forms: "cmd > file", "cmd>file", "cmd> file", etc.
- * Rejects: multiple '>' or missing filename or extra tokens after filename.
- */
-/* parse_redirection:
- * - cmd: mutable command string (will be truncated before '>' if redirection present)
- * - out_target: set to malloc'd filename string on success, or NULL if no redirection
- * Returns 0 on success, -1 on syntax error.
- *
- * Rules enforced:
- *  - only one '>' allowed
- *  - '>' cannot be the first non-whitespace token
- *  - exactly one filename token must follow '>' and nothing else (except whitespace)
- */
-static int parse_redirection(char *cmd, char **out_target) {
-    *out_target = NULL;
-    if (!cmd) return 0;
-
-    /* find first '>' */
-    char *first = strchr(cmd, '>');
-    if (!first) return 0; /* no redirection */
-
-    /* ensure only one '>' occurs */
-    if (strchr(first + 1, '>')) return -1;
-
-    /* Ensure there's something before '>' (non-whitespace) */
-    /* Temporarily copy left side to test */
-    char *left = cmd;
-    while (*left == ' ' || *left == '\t') left++;
-    if (left == first) return -1; /* '>' is first non-whitespace token */
-
-    /* Now isolate RHS and check filename rules */
-    char *rhs = first + 1;
-    /* skip whitespace */
-    while (*rhs == ' ' || *rhs == '\t') rhs++;
-    if (*rhs == '\0') return -1; /* missing filename */
-
-    /* filename is until next whitespace (space/tab/newline) */
-    char *p = rhs;
-    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n') p++;
-
-    /* if there's more non-whitespace after the filename -> syntax error */
-    if (*p != '\0') {
-        char *after = p;
-        while (*after == ' ' || *after == '\t' || *after == '\n') after++;
-        if (*after != '\0') return -1; /* extra token after filename */
-        /* otherwise terminate filename */
-        *p = '\0';
-    }
-
-    /* Now truncate cmd at the '>' (remove right side) */
-    *first = '\0';
-    /* Trim trailing whitespace on left side (optional) */
-    /* move trimmed left to front if needed */
-    char *left_trim = left;
-    char *end = left_trim + strlen(left_trim) - 1;
-    while (end > left_trim && (*end == ' ' || *end == '\t' || *end == '\n')) { *end = '\0'; end--; }
-    if (left_trim != cmd) memmove(cmd, left_trim, strlen(left_trim) + 1);
-
-    /* Duplicate filename for caller */
-    *out_target = strdup(rhs);
-    if (!*out_target) return -1; /* treat allocation failure as syntax-like error */
-
-    return 0;
-}
->>>>>>> parent of b52abce (Merge pull request #16 from TaylorTurnerIT/ITUS-33)
 // Fork the current process and run parameter program in child process. Awaits completion.
 void fork_and_run(const char *program, char *const argv[]) {
     pid_t pid = fork();
@@ -419,6 +302,120 @@ void clear_stdin_buffer() {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
 }
+
+/* ----------------- Helper Functions ----------------- */
+
+/* trim_whitespace:
+ * - Removes leading and trailing whitespace (spaces, tabs, newlines) in-place.
+ * - Returns pointer to first non-whitespace character.
+ * - Modifies the original string by inserting a null terminator at the end.
+ */
+static char *trim_whitespace(char *s) {
+    if (!s) return s;                  // Null check
+    while (*s == ' ' || *s == '\t' || *s == '\n') s++;  // Skip leading whitespace
+    if (*s == '\0') return s;          // Entire string was whitespace
+    char *end = s + strlen(s) - 1;     // Pointer to last character
+    while (end > s && (*end == ' ' || *end == '\t' || *end == '\n')) {
+        *end = '\0';                   // Replace trailing whitespace with null terminator
+        end--;
+    }
+    return s;                          // Return trimmed string
+}
+
+/* split_parallel_commands:
+ * - Splits a command line on '&' for parallel execution.
+ * - Returns a malloc'd array of pointers to each segment (NULL-terminated).
+ * - Sets out_count to the number of segments.
+ * - Caller must free the array (but not the strings themselves, which point into linecopy).
+ */
+static char **split_parallel_commands(char *linecopy, int *out_count) {
+    size_t cap = 8, cnt = 0;                    // Initial capacity and count
+    char **parts = malloc(sizeof(char*) * cap); // Allocate array of pointers
+    if (!parts) { _shell_error_msg(); return NULL; }
+
+    char *p = linecopy;                          // Start of line
+    while (1) {
+        char *amp = strchr(p, '&');              // Find next '&'
+        if (!amp) {                              // No more '&'
+            char *part = trim_whitespace(p);     // Trim whitespace
+            if (cnt >= cap) {                    // Resize array if needed
+                cap *= 2; 
+                parts = realloc(parts, sizeof(char*) * cap); 
+            }
+            parts[cnt++] = part;                 // Add final segment
+            break;
+        }
+        *amp = '\0';                             // Split string at '&'
+        char *part = trim_whitespace(p);         // Trim whitespace
+        if (cnt >= cap) {                        // Resize array if needed
+            cap *= 2; 
+            parts = realloc(parts, sizeof(char*) * cap); 
+        }
+        parts[cnt++] = part;                     // Store this segment
+        p = amp + 1;                             // Move past '&'
+    }
+    parts = realloc(parts, sizeof(char*) * (cnt + 1)); // Null-terminate array
+    parts[cnt] = NULL;
+    if (out_count) *out_count = (int)cnt;       // Return number of segments
+    return parts;
+}
+
+/* parse_redirection:
+ * - Parses a single '>' output redirection in a command.
+ * - cmd: mutable command string (will be truncated before '>')
+ * - out_target: set to malloc'd filename string if redirection exists
+ * - Returns 0 on success, -1 on syntax error
+ *
+ * Rules:
+ *  - Only one '>' allowed
+ *  - '>' cannot be first non-whitespace character
+ *  - Exactly one filename token must follow '>'
+ *  - Extra tokens after filename are syntax errors
+ */
+static int parse_redirection(char *cmd, char **out_target) {
+    *out_target = NULL;                        // Initialize output
+    if (!cmd) return 0;                        // Nothing to do
+
+    char *first = strchr(cmd, '>');            // Locate first '>'
+    if (!first) return 0;                       // No redirection
+
+    if (strchr(first + 1, '>')) return -1;     // Multiple '>' not allowed
+
+    char *left = cmd;                           // Left side of command
+    while (*left == ' ' || *left == '\t') left++; // Skip leading whitespace
+    if (left == first) return -1;              // '>' is first non-whitespace -> error
+
+    char *rhs = first + 1;                      // Right side (filename)
+    while (*rhs == ' ' || *rhs == '\t') rhs++; // Skip whitespace
+    if (*rhs == '\0') return -1;               // Missing filename
+
+    char *p = rhs;
+    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n') p++; // Filename end
+
+    if (*p != '\0') {                           // Check for extra tokens
+        char *after = p;
+        while (*after == ' ' || *after == '\t' || *after == '\n') after++;
+        if (*after != '\0') return -1;         // Extra tokens -> syntax error
+        *p = '\0';                              // Terminate filename
+    }
+
+    *first = '\0';                              // Truncate command before '>'
+    
+    // Trim trailing whitespace in command
+    char *left_trim = left;
+    char *end = left_trim + strlen(left_trim) - 1;
+    while (end > left_trim && (*end == ' ' || *end == '\t' || *end == '\n')) {
+        *end = '\0';
+        end--;
+    }
+    if (left_trim != cmd) memmove(cmd, left_trim, strlen(left_trim) + 1);
+
+    *out_target = strdup(rhs);                  // Copy filename
+    if (!*out_target) return -1;               // Allocation failure treated as syntax error
+
+    return 0;
+}
+
 
 
 int main(int argc, char *argv[]) {
