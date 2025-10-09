@@ -414,7 +414,8 @@ void clear_stdin_buffer() {
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
     int is_interactive = 1; // Flag for interactive mode
-    
+    FILE *infile = stdin; // Input stream (stdin for interactive, batch file for batch mode)
+
     ProgramArray *available_programs = get_all_programs();
 
     // Initialize shell path with default: /bin
@@ -430,17 +431,33 @@ int main(int argc, char *argv[]) {
         print_errno();
     }
 
-    // Argument validation
+    /* Argument validation per spec:
+     * - If more than one command-line argument is provided, print the single error
+     *   message to stderr and exit(1).
+     * - If one argument is provided, try to open it as batch file later (see below).
+     */
     if (argc > 2) {
-        printf("An error has occurred\nArgument list too long (Code: %d)\n", E2BIG);
-        if (available_programs) free_program_array(available_programs);
-        exit(E2BIG);
-    } else if (argc == 2) {
-        // Batch mode not implemented
-        printf("Batch mode not implemented.\n");
-        is_interactive = 0; // Switch to batch mode
+        write(STDERR_FILENO, "An error has occurred\n", 22);
         if (available_programs) free_program_array(available_programs);
         exit(1);
+    }
+
+    /* If batch mode, try opening the provided file. If fopen fails, print the
+     * single error message and exit(1). (This matches the spec's requirement.)
+     */
+    if (argc == 2) {
+        /* attempt to open batch file now so we can error-exit immediately on bad file */
+        FILE *batch = fopen(argv[1], "r");
+        if (!batch) {
+            write(STDERR_FILENO, "An error has occurred\n", 22);
+            if (available_programs) free_program_array(available_programs);
+            exit(1);
+        }
+        /* success: switch to batch mode and use 'batch' as input stream */
+        infile = batch;
+        is_interactive = 0;
+    } else {
+        is_interactive = 1;
     }
 
     while (1) { // Infinite loop to continuously prompt for input
