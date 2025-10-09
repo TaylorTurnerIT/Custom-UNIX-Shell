@@ -19,8 +19,6 @@ static int shell_path_count = 0;
 
 #define BUFFER_SIZE 512
 
-// ...existing code...
-
 #include <unistd.h>  /* for write(), STDERR_FILENO */
 #include <string.h>  /* for strcmp */
 #include <stdlib.h>  /* for malloc/realloc/free */
@@ -252,14 +250,6 @@ void free_program_array(ProgramArray *arr) {
     }
 }
 
-// ...existing code...
-
-
-// ...existing code...
-
-// ...existing code...
-
-// ...existing code...
 // Fork the current process and run parameter program in child process. Awaits completion.
 void fork_and_run(const char *program, char *const argv[]) {
     pid_t pid = fork();
