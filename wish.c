@@ -1,4 +1,3 @@
-#include "parsing.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <errno.h> // Error handling library. Assigns errno variable with error code when they occur.
@@ -13,13 +12,39 @@
 
 #include <fcntl.h> // For open(), O_CREAT, O_WRONLY, O_TRUNC
 
+
+static char **split_parallel_commands(char *linecopy, int *out_count);
+static int parse_redirection(char *cmd, char **out_target);
+static char *trim_whitespace(char *s);
+
+
 // Shell's search path (dynamic)
 static char **shell_paths = NULL;
 static int shell_path_count = 0;
 
 #define BUFFER_SIZE 512
 
-// ...existing code...
+
+// Splits a line into tokens separated by spaces/tabs.
+// Returns the number of tokens parsed.
+int tokenize_input(char *input, char **tokens, int max_tokens) {
+    int token_count = 0;
+    char *token;
+
+    while ((token = strsep(&input, " \t")) != NULL) {
+        // Skip empty tokens from consecutive spaces/tabs
+        if (*token == '\0') continue;
+        if (token_count < max_tokens - 1) {
+            tokens[token_count++] = token;
+        } else {
+            break;
+        }
+    }
+
+    tokens[token_count] = NULL; // null-terminate
+    return token_count;
+}
+
 
 #include <unistd.h>  /* for write(), STDERR_FILENO */
 #include <string.h>  /* for strcmp */
@@ -252,14 +277,6 @@ void free_program_array(ProgramArray *arr) {
     }
 }
 
-// ...existing code...
-
-
-// ...existing code...
-
-// ...existing code...
-
-// ...existing code...
 // Fork the current process and run parameter program in child process. Awaits completion.
 void fork_and_run(const char *program, char *const argv[]) {
     pid_t pid = fork();
@@ -286,11 +303,126 @@ void clear_stdin_buffer() {
     while ((c = getchar()) != '\n' && c != EOF);
 }
 
+/* ----------------- Helper Functions ----------------- */
+
+/* trim_whitespace:
+ * - Removes leading and trailing whitespace (spaces, tabs, newlines) in-place.
+ * - Returns pointer to first non-whitespace character.
+ * - Modifies the original string by inserting a null terminator at the end.
+ */
+static char *trim_whitespace(char *s) {
+    if (!s) return s;                  // Null check
+    while (*s == ' ' || *s == '\t' || *s == '\n') s++;  // Skip leading whitespace
+    if (*s == '\0') return s;          // Entire string was whitespace
+    char *end = s + strlen(s) - 1;     // Pointer to last character
+    while (end > s && (*end == ' ' || *end == '\t' || *end == '\n')) {
+        *end = '\0';                   // Replace trailing whitespace with null terminator
+        end--;
+    }
+    return s;                          // Return trimmed string
+}
+
+/* split_parallel_commands:
+ * - Splits a command line on '&' for parallel execution.
+ * - Returns a malloc'd array of pointers to each segment (NULL-terminated).
+ * - Sets out_count to the number of segments.
+ * - Caller must free the array (but not the strings themselves, which point into linecopy).
+ */
+static char **split_parallel_commands(char *linecopy, int *out_count) {
+    size_t cap = 8, cnt = 0;                    // Initial capacity and count
+    char **parts = malloc(sizeof(char*) * cap); // Allocate array of pointers
+    if (!parts) { _shell_error_msg(); return NULL; }
+
+    char *p = linecopy;                          // Start of line
+    while (1) {
+        char *amp = strchr(p, '&');              // Find next '&'
+        if (!amp) {                              // No more '&'
+            char *part = trim_whitespace(p);     // Trim whitespace
+            if (cnt >= cap) {                    // Resize array if needed
+                cap *= 2; 
+                parts = realloc(parts, sizeof(char*) * cap); 
+            }
+            parts[cnt++] = part;                 // Add final segment
+            break;
+        }
+        *amp = '\0';                             // Split string at '&'
+        char *part = trim_whitespace(p);         // Trim whitespace
+        if (cnt >= cap) {                        // Resize array if needed
+            cap *= 2; 
+            parts = realloc(parts, sizeof(char*) * cap); 
+        }
+        parts[cnt++] = part;                     // Store this segment
+        p = amp + 1;                             // Move past '&'
+    }
+    parts = realloc(parts, sizeof(char*) * (cnt + 1)); // Null-terminate array
+    parts[cnt] = NULL;
+    if (out_count) *out_count = (int)cnt;       // Return number of segments
+    return parts;
+}
+
+/* parse_redirection:
+ * - Parses a single '>' output redirection in a command.
+ * - cmd: mutable command string (will be truncated before '>')
+ * - out_target: set to malloc'd filename string if redirection exists
+ * - Returns 0 on success, -1 on syntax error
+ *
+ * Rules:
+ *  - Only one '>' allowed
+ *  - '>' cannot be first non-whitespace character
+ *  - Exactly one filename token must follow '>'
+ *  - Extra tokens after filename are syntax errors
+ */
+static int parse_redirection(char *cmd, char **out_target) {
+    *out_target = NULL;                        // Initialize output
+    if (!cmd) return 0;                        // Nothing to do
+
+    char *first = strchr(cmd, '>');            // Locate first '>'
+    if (!first) return 0;                       // No redirection
+
+    if (strchr(first + 1, '>')) return -1;     // Multiple '>' not allowed
+
+    char *left = cmd;                           // Left side of command
+    while (*left == ' ' || *left == '\t') left++; // Skip leading whitespace
+    if (left == first) return -1;              // '>' is first non-whitespace -> error
+
+    char *rhs = first + 1;                      // Right side (filename)
+    while (*rhs == ' ' || *rhs == '\t') rhs++; // Skip whitespace
+    if (*rhs == '\0') return -1;               // Missing filename
+
+    char *p = rhs;
+    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n') p++; // Filename end
+
+    if (*p != '\0') {                           // Check for extra tokens
+        char *after = p;
+        while (*after == ' ' || *after == '\t' || *after == '\n') after++;
+        if (*after != '\0') return -1;         // Extra tokens -> syntax error
+        *p = '\0';                              // Terminate filename
+    }
+
+    *first = '\0';                              // Truncate command before '>'
+    
+    // Trim trailing whitespace in command
+    char *left_trim = left;
+    char *end = left_trim + strlen(left_trim) - 1;
+    while (end > left_trim && (*end == ' ' || *end == '\t' || *end == '\n')) {
+        *end = '\0';
+        end--;
+    }
+    if (left_trim != cmd) memmove(cmd, left_trim, strlen(left_trim) + 1);
+
+    *out_target = strdup(rhs);                  // Copy filename
+    if (!*out_target) return -1;               // Allocation failure treated as syntax error
+
+    return 0;
+}
+
+
 
 int main(int argc, char *argv[]) {
     char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
     int is_interactive = 1; // Flag for interactive mode
-    
+    FILE *infile = stdin; // Input stream (stdin for interactive, batch file for batch mode)
+
     ProgramArray *available_programs = get_all_programs();
 
     // Initialize shell path with default: /bin
@@ -306,17 +438,33 @@ int main(int argc, char *argv[]) {
         print_errno();
     }
 
-    // Argument validation
+    /* Argument validation per spec:
+     * - If more than one command-line argument is provided, print the single error
+     *   message to stderr and exit(1).
+     * - If one argument is provided, try to open it as batch file later (see below).
+     */
     if (argc > 2) {
-        printf("An error has occurred\nArgument list too long (Code: %d)\n", E2BIG);
-        if (available_programs) free_program_array(available_programs);
-        exit(E2BIG);
-    } else if (argc == 2) {
-        // Batch mode not implemented
-        printf("Batch mode not implemented.\n");
-        is_interactive = 0; // Switch to batch mode
+        write(STDERR_FILENO, "An error has occurred\n", 22);
         if (available_programs) free_program_array(available_programs);
         exit(1);
+    }
+
+    /* If batch mode, try opening the provided file. If fopen fails, print the
+     * single error message and exit(1). (This matches the spec's requirement.)
+     */
+    if (argc == 2) {
+        /* attempt to open batch file now so we can error-exit immediately on bad file */
+        FILE *batch = fopen(argv[1], "r");
+        if (!batch) {
+            write(STDERR_FILENO, "An error has occurred\n", 22);
+            if (available_programs) free_program_array(available_programs);
+            exit(1);
+        }
+        /* success: switch to batch mode and use 'batch' as input stream */
+        infile = batch;
+        is_interactive = 0;
+    } else {
+        is_interactive = 1;
     }
 
     while (1) { // Infinite loop to continuously prompt for input
@@ -324,37 +472,71 @@ int main(int argc, char *argv[]) {
         if(is_interactive) {
             printf("wish>");
             // Prompt user for input
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
+            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
                 // Remove trailing newline, if it exists
                 char *newline = strchr(inputBuffer, '\n');
                 if (newline) {
                     *newline = '\0';
                 } else {
+                    // If no newline, input was too long and was truncated
                     printf("Input too long. Truncating.\n");
                     clear_stdin_buffer();
                 }
+                // Use new helpers for parsing and execution
                 char *linecopy = strdup(inputBuffer);
-                if (!linecopy) { _shell_error_msg(); continue; }
+                if (!linecopy) {
+                    _shell_error_msg();
+                    continue;
+                }
                 int part_count = 0;
-                char **parts = parse_input_line(linecopy, &part_count);
-                if (!parts) { free(linecopy); continue; }
+                char **parts = split_parallel_commands(linecopy, &part_count);
+                if (!parts) {
+                    free(linecopy);
+                    continue;
+                }
                 for (int i = 0; i < part_count; ++i) {
-                    if (!parts[i] || parts[i][0] == '\0') { _shell_error_msg(); continue; }
-                    char *redir_target = NULL;
-                    char *tokens[BUFFER_SIZE / 2 + 1];
-                    int token_count = parse_command_segment(parts[i], tokens, BUFFER_SIZE / 2 + 1, &redir_target);
-                    if (token_count < 0) { _shell_error_msg(); if (redir_target) free(redir_target); continue; }
-                    if (token_count == 0) { if (redir_target) free(redir_target); continue; }
-                    if (handle_builtin(tokens)) {
-                        if (redir_target) { _shell_error_msg(); free(redir_target); }
+                    // Reject empty segment (syntax error)
+                    if (!parts[i] || parts[i][0] == '\0') {
+                        _shell_error_msg();
                         continue;
                     }
-                    if (shell_path_count == 0) { _shell_error_msg(); if (redir_target) free(redir_target); continue; }
+                    char *redir_target = NULL;
+                    if (parse_redirection(parts[i], &redir_target) < 0) {
+                        _shell_error_msg();
+                        if (redir_target) free(redir_target);
+                        continue;
+                    }
+                    // Tokenize the trimmed command
+                    char cmdcopy[BUFFER_SIZE];
+                    strncpy(cmdcopy, parts[i], BUFFER_SIZE - 1);
+                    cmdcopy[BUFFER_SIZE - 1] = '\0';
+                    char *tokens[BUFFER_SIZE / 2 + 1];
+                    int token_count = tokenize_input(cmdcopy, tokens, BUFFER_SIZE / 2 + 1);
+                    if (token_count == 0) {
+                        if (redir_target) free(redir_target);
+                        continue;
+                    }
+                    // Builtin check and redirection rejection
+                    if (handle_builtin(tokens)) {
+                        if (redir_target) {
+                            _shell_error_msg();
+                            free(redir_target);
+                        }
+                        continue;
+                    }
+                    // If no paths are set, print error and skip execution
+                    if (shell_path_count == 0) {
+                        _shell_error_msg();
+                        if (redir_target) free(redir_target);
+                        continue;
+                    }
                     int executed = 0;
+                    // Check for absolute or relative path
                     if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
                         if (access(tokens[0], X_OK) == 0) {
                             pid_t pid = fork();
                             if (pid == 0) {
+                                // Child: handle redirection
                                 if (redir_target) {
                                     int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0666);
                                     if (fd < 0) { _shell_error_msg(); _exit(1); }
@@ -377,6 +559,7 @@ int main(int argc, char *argv[]) {
                             if (access(fullpath, X_OK) == 0) {
                                 pid_t pid = fork();
                                 if (pid == 0) {
+                                    // Child: handle redirection
                                     if (redir_target) {
                                         int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0666);
                                         if (fd < 0) { _shell_error_msg(); _exit(1); }
@@ -395,16 +578,22 @@ int main(int argc, char *argv[]) {
                             }
                         }
                     }
-                    if (!executed) { _shell_error_msg(); }
+                    if (!executed) {
+                        _shell_error_msg();
+                    }
                     if (redir_target) free(redir_target);
                 }
                 free(parts);
                 free(linecopy);
+                // End new helpers integration
             } else {
+                // Handle EOF (Control+D) or input error
                 if (feof(stdin)) {
+                    // EOF encountered (Control+D pressed)
                     printf("\nGoodbye!\n");
-                    break;
+                    break; // Exit the main loop gracefully
                 } else {
+                    // Handle other input errors
                     printf("Command not recognised, please try again.\n");
                 }
             }

@@ -7,11 +7,8 @@ OBJ = $(SRC:.c=.o)
 
 all: $(TARGET) run
 
-all: $(TARGET)
-
-
-$(TARGET): wish.o parallel.o
-	$(CC) $(CFLAGS) -o $@ wish.o parallel.o
+$(TARGET): wish.o parallel.o 
+	$(CC) $(CFLAGS) -o $@ wish.o parallel.o 
 
 parallel_test: parallel_test.o parallel.o
 	$(CC) $(CFLAGS) -o $@ parallel_test.o parallel.o
@@ -24,6 +21,5 @@ run: $(TARGET)
 
 clean:
 	rm -f $(OBJ) $(TARGET)
-
 
 .PHONY: all clean run parallel_test
