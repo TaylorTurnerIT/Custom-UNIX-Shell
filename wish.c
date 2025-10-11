@@ -459,108 +459,89 @@ int main(int argc, char *argv[]) {
         print_errno();
     }
 
-    while (1) { // Infinite loop to continuously prompt for input
+    while (1) {
         if (is_interactive) {
             printf("wish>");
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
-                // ...existing code...
-                // End new helpers integration
-            } else {
-                // ...existing code...
-            }
-        } else {
-            // --- BATCH MODE ---
-            // Not implemented
-            exit(1);
         }
-        // --- INTERACTIVE MODE ---
-        if(is_interactive) {
-            printf("wish>");
-            // Prompt user for input
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
-                // Remove trailing newline, if it exists
-                char *newline = strchr(inputBuffer, '\n');
-                if (newline) {
-                    *newline = '\0';
-                } else {
-                    // If no newline, input was too long and was truncated
-                    printf("Input too long. Truncating.\n");
-                    clear_stdin_buffer();
-                }
-                //printf("You entered: '%s'\n", inputBuffer);
-                
-                // Tokenize inputBuffer to extract command and arguments
-
-                char *tokens[BUFFER_SIZE / 2 + 1];
-                int token_count = tokenize_input(inputBuffer, tokens, BUFFER_SIZE / 2 + 1);
-
-                // Skip empty input lines
-                if (token_count == 0) {
-                    continue;
-                }
-
-                // Use handle_builtin for all builtins
-                if (handle_builtin(tokens)) {
-                    continue; // builtin handled, do not fork
-                }
-
-
-
-        // If no paths are set, print error and skip execution
-        if (shell_path_count == 0) {
-            write(STDERR_FILENO, "An error has occurred\n", 22);
-            continue;
-        }
-        int executed = 0;
-        // Check for absolute or relative path
-        if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
-            if (access(tokens[0], X_OK) == 0) {
-                pid_t pid = fork();
-                if (pid == 0) {
-                    execv(tokens[0], tokens);
-                    write(STDERR_FILENO, "An error has occurred\n", 21);
-                    exit(1);
-                } else {
-                    wait(NULL);
-                }
-                executed = 1;
+        if (fgets(inputBuffer, sizeof(inputBuffer), infile) != NULL) {
+            // Remove trailing newline, if it exists
+            char *newline = strchr(inputBuffer, '\n');
+            if (newline) {
+                *newline = '\0';
             }
-        } else {
-            for (int i = 0; i < shell_path_count; i++) {
-                char fullpath[1024];
-                snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
-                if (access(fullpath, X_OK) == 0) {
+            // If input is too long and no newline, clear buffer (only for interactive)
+            else if (is_interactive) {
+                printf("Input too long. Truncating.\n");
+                clear_stdin_buffer();
+            }
+
+            // Tokenize inputBuffer to extract command and arguments
+            char *tokens[BUFFER_SIZE / 2 + 1];
+            int token_count = tokenize_input(inputBuffer, tokens, BUFFER_SIZE / 2 + 1);
+
+            // Skip empty input lines
+            if (token_count == 0) {
+                continue;
+            }
+
+            // Use handle_builtin for all builtins
+            if (handle_builtin(tokens)) {
+                continue; // builtin handled, do not fork
+            }
+
+            // If no paths are set, print error and skip execution
+            if (shell_path_count == 0) {
+                write(STDERR_FILENO, "An error has occurred\n", 22);
+                continue;
+            }
+            int executed = 0;
+            // Check for absolute or relative path
+            if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
+                if (access(tokens[0], X_OK) == 0) {
                     pid_t pid = fork();
                     if (pid == 0) {
-                        execv(fullpath, tokens);
+                        execv(tokens[0], tokens);
                         write(STDERR_FILENO, "An error has occurred\n", 21);
                         exit(1);
                     } else {
                         wait(NULL);
                     }
                     executed = 1;
-                    break;
+                }
+            } else {
+                for (int i = 0; i < shell_path_count; i++) {
+                    char fullpath[1024];
+                    snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
+                    if (access(fullpath, X_OK) == 0) {
+                        pid_t pid = fork();
+                        if (pid == 0) {
+                            execv(fullpath, tokens);
+                            write(STDERR_FILENO, "An error has occurred\n", 21);
+                            exit(1);
+                        } else {
+                            wait(NULL);
+                        }
+                        executed = 1;
+                        break;
+                    }
                 }
             }
-        }
-        if (!executed) {
-            write(STDERR_FILENO, "An error has occurred\n", 22);
-        }
-            } else {
-                // Handle EOF (Control+D) or input error
-                if (feof(stdin)) {
-                    // EOF encountered (Control+D pressed)
-                    printf("\nGoodbye!\n");
-                    break; // Exit the main loop gracefully
-                } else {
-                    // Handle other input errors
-                    printf("Command not recognised, please try again.\n");
-                }
+            if (!executed) {
+                write(STDERR_FILENO, "An error has occurred\n", 22);
             }
         } else {
-            // --- BATCH MODE ---
-            // Not implemented
-            exit(1);
+            // Handle EOF or input error
+            if (is_interactive) {
+                if (feof(infile)) {
+                    printf("\nGoodbye!\n");
+                    break;
+                } else {
+                    printf("Command not recognised, please try again.\n");
+                }
+            } else {
+                // Batch mode: just exit on EOF or error
+                break;
+            }
         }
     }
     
