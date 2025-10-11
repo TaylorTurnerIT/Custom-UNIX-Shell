@@ -13,6 +13,9 @@
 #include <fcntl.h> // For open(), O_CREAT, O_WRONLY, O_TRUNC
 
 
+// Forward declarations
+static void shell_error(int err_code);
+static void print_errno(void);
 static char **split_parallel_commands(char *linecopy, int *out_count);
 static int parse_redirection(char *cmd, char **out_target);
 static char *trim_whitespace(char *s);
@@ -50,19 +53,14 @@ int tokenize_input(char *input, char **tokens, int max_tokens) {
 #include <string.h>  /* for strcmp */
 #include <stdlib.h>  /* for malloc/realloc/free */
 
-static inline void _shell_error_msg(void) {
-    const char msg[] = "An error has occurred\n";
-    write(STDERR_FILENO, msg, sizeof(msg) - 1);
-}
-
 static int handle_builtin(char **argv) {
     if (!argv || !argv[0]) return 0;
 
     /* --- exit: takes zero args --- */
     if (strcmp(argv[0], "exit") == 0) {
         if (argv[1] != NULL) {
-            _shell_error_msg();   /* exit with args -> shell error, but do not exit */
-            return 1;             /* handled (error) */
+            shell_error(EINVAL);   /* exit with args -> shell error, but do not exit */
+            return 1;              /* handled (error) */
         } else {
             exit(0);
         }
@@ -72,12 +70,12 @@ static int handle_builtin(char **argv) {
     if (strcmp(argv[0], "cd") == 0) {
         /* argc must be exactly 2 (argv[0] + one arg) */
         if (!argv[1] || argv[2] != NULL) {
-            _shell_error_msg();
+            shell_error(EINVAL);
             return 1; /* handled (error) */
         }
         if (chdir(argv[1]) != 0) {
-            /* chdir failed -> print the required single error message */
-            _shell_error_msg();
+            /* chdir failed -> print error with actual errno from chdir */
+            print_errno();
         }
         return 1; /* handled successfully (or printed error) */
     }
@@ -105,7 +103,7 @@ static int handle_builtin(char **argv) {
 
         shell_paths = malloc(sizeof(char*) * n);
         if (!shell_paths) {
-            _shell_error_msg();
+            shell_error(ENOMEM);
             shell_path_count = 0;
             return 1;
         }
@@ -117,7 +115,7 @@ static int handle_builtin(char **argv) {
                 free(shell_paths);
                 shell_paths = NULL;
                 shell_path_count = 0;
-                _shell_error_msg();
+                shell_error(ENOMEM);
                 return 1;
             }
         }
@@ -131,10 +129,277 @@ static int handle_builtin(char **argv) {
 
 // BUFFER_SIZE is defined as a macro at the top
 
-// Prints the current errno value and its descr iption
+// Prints detailed errno information to stderr
 // Use this function to throw an explained error without breaking out of the loop
-void print_errno() {
-    printf("An error has occurred. %s (Code: %d)\n", strerror(errno), errno);
+void print_errno(void) {
+    char error_msg[256];
+    int len = snprintf(error_msg, sizeof(error_msg), 
+                      "An error has occurred. %s (Code: %d)\n", 
+                      strerror(errno), errno);
+    if (len > 0 && len < (int)sizeof(error_msg)) {
+        write(STDERR_FILENO, error_msg, len);
+    } else {
+        // Fallback if message is too long
+        write(STDERR_FILENO, "An error has occurred\n", 22);
+    }
+}
+
+// Helper to set errno and print error
+static inline void shell_error(int err_code) {
+    errno = err_code;
+    print_errno();
+}
+
+/* execute_single_command:
+ * - Executes a single command (handles redirection).
+ * - Returns 0 on success, -1 on error.
+ */
+static int execute_single_command(char *cmd_str) {
+    if (!cmd_str || *cmd_str == '\0') return 0; // Empty command
+
+    char *redir_target = NULL;
+    if (parse_redirection(cmd_str, &redir_target) != 0) {
+        shell_error(EINVAL);
+        return -1;
+    }
+
+    // Tokenize the command
+    char *tokens[BUFFER_SIZE / 2 + 1];
+    char *cmd_copy = strdup(cmd_str);
+    if (!cmd_copy) {
+        if (redir_target) free(redir_target);
+        shell_error(ENOMEM);
+        return -1;
+    }
+
+    int token_count = tokenize_input(cmd_copy, tokens, BUFFER_SIZE / 2 + 1);
+    
+    if (token_count == 0) {
+        free(cmd_copy);
+        if (redir_target) free(redir_target);
+        return 0; // Empty after tokenization
+    }
+
+    // Check if it's a builtin
+    if (handle_builtin(tokens)) {
+        free(cmd_copy);
+        if (redir_target) free(redir_target);
+        return 0; // Builtin handled
+    }
+
+    // If no paths are set, error
+    if (shell_path_count == 0) {
+        shell_error(ENOENT);
+        free(cmd_copy);
+        if (redir_target) free(redir_target);
+        return -1;
+    }
+
+    // Find the executable
+    char fullpath[1024];
+    int found = 0;
+    
+    // Check for absolute or relative path
+    if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
+        if (access(tokens[0], X_OK) == 0) {
+            strncpy(fullpath, tokens[0], sizeof(fullpath) - 1);
+            fullpath[sizeof(fullpath) - 1] = '\0';
+            found = 1;
+        }
+    } else {
+        // Search in path directories
+        for (int i = 0; i < shell_path_count; i++) {
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
+            if (access(fullpath, X_OK) == 0) {
+                found = 1;
+                break;
+            }
+        }
+    }
+
+    if (!found) {
+        shell_error(ENOENT);
+        free(cmd_copy);
+        if (redir_target) free(redir_target);
+        return -1;
+    }
+
+    // Fork and execute
+    pid_t pid = fork();
+    if (pid < 0) {
+        shell_error(EAGAIN);
+        free(cmd_copy);
+        if (redir_target) free(redir_target);
+        return -1;
+    } else if (pid == 0) {
+        // Child process
+        if (redir_target) {
+            int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+            if (fd < 0) {
+                shell_error(EACCES);
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+        }
+        
+        execv(fullpath, tokens);
+        shell_error(ENOEXEC);
+        exit(1);
+    }
+    // Parent process - will wait for child later
+    
+    free(cmd_copy);
+    if (redir_target) free(redir_target);
+    return 0;
+}
+
+/* process_command_line:
+ * - Processes a complete command line (handles parallel commands with &).
+ * - Returns 0 on success, -1 on error.
+ */
+static int process_command_line(char *line) {
+    if (!line || *line == '\0') return 0; // Empty line
+    
+    char *linecopy = strdup(line);
+    if (!linecopy) {
+        shell_error(ENOMEM);
+        return -1;
+    }
+
+    int cmd_count = 0;
+    char **cmds = split_parallel_commands(linecopy, &cmd_count);
+    if (!cmds) {
+        free(linecopy);
+        return -1;
+    }
+
+    // Array to track PIDs of forked processes
+    pid_t *pids = malloc(sizeof(pid_t) * cmd_count);
+    if (!pids) {
+        free(cmds);
+        free(linecopy);
+        shell_error(ENOMEM);
+        return -1;
+    }
+
+    int pid_count = 0;
+
+    // Execute all commands (they will fork)
+    for (int i = 0; i < cmd_count; i++) {
+        if (cmds[i] && *cmds[i] != '\0') {
+            // For parallel execution, we need to capture PIDs
+            // We'll modify execute_single_command approach for parallel
+            char *cmd_str = cmds[i];
+            char *redir_target = NULL;
+            
+            if (parse_redirection(cmd_str, &redir_target) != 0) {
+                shell_error(EINVAL);
+                if (redir_target) free(redir_target);
+                continue;
+            }
+
+            char *tokens[BUFFER_SIZE / 2 + 1];
+            char *cmd_copy = strdup(cmd_str);
+            if (!cmd_copy) {
+                if (redir_target) free(redir_target);
+                shell_error(ENOMEM);
+                continue;
+            }
+
+            int token_count = tokenize_input(cmd_copy, tokens, BUFFER_SIZE / 2 + 1);
+            
+            if (token_count == 0) {
+                free(cmd_copy);
+                if (redir_target) free(redir_target);
+                continue;
+            }
+
+            // Check if it's a builtin
+            if (handle_builtin(tokens)) {
+                free(cmd_copy);
+                if (redir_target) free(redir_target);
+                continue;
+            }
+
+            // If no paths are set, error
+            if (shell_path_count == 0) {
+                shell_error(ENOENT);
+                free(cmd_copy);
+                if (redir_target) free(redir_target);
+                continue;
+            }
+
+            // Find the executable
+            char fullpath[1024];
+            int found = 0;
+            
+            if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
+                if (access(tokens[0], X_OK) == 0) {
+                    strncpy(fullpath, tokens[0], sizeof(fullpath) - 1);
+                    fullpath[sizeof(fullpath) - 1] = '\0';
+                    found = 1;
+                }
+            } else {
+                for (int j = 0; j < shell_path_count; j++) {
+                    snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[j], tokens[0]);
+                    if (access(fullpath, X_OK) == 0) {
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                shell_error(ENOENT);
+                free(cmd_copy);
+                if (redir_target) free(redir_target);
+                continue;
+            }
+
+            // Fork and execute
+            pid_t pid = fork();
+            if (pid < 0) {
+                shell_error(EAGAIN);
+                free(cmd_copy);
+                if (redir_target) free(redir_target);
+                continue;
+            } else if (pid == 0) {
+                // Child process
+                if (redir_target) {
+                    int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                    if (fd < 0) {
+                        shell_error(EACCES);
+                        exit(1);
+                    }
+                    dup2(fd, STDOUT_FILENO);
+                    dup2(fd, STDERR_FILENO);
+                    close(fd);
+                }
+                
+                execv(fullpath, tokens);
+                shell_error(ENOEXEC);
+                exit(1);
+            } else {
+                // Parent - track the PID
+                pids[pid_count++] = pid;
+            }
+            
+            free(cmd_copy);
+            if (redir_target) free(redir_target);
+        }
+    }
+
+    // Wait for all parallel commands to complete
+    for (int i = 0; i < pid_count; i++) {
+        waitpid(pids[i], NULL, 0);
+    }
+
+    free(pids);
+    free(cmds);
+    free(linecopy);
+    return 0;
 }
 
 // Structure to hold the array of programs
@@ -328,7 +593,10 @@ static char *trim_whitespace(char *s) {
 static char **split_parallel_commands(char *linecopy, int *out_count) {
     size_t cap = 8, cnt = 0;                    // Initial capacity and count
     char **parts = malloc(sizeof(char*) * cap); // Allocate array of pointers
-    if (!parts) { _shell_error_msg(); return NULL; }
+    if (!parts) { 
+        shell_error(ENOMEM);
+        return NULL; 
+    }
 
     char *p = linecopy;                          // Start of line
     while (1) {
@@ -337,7 +605,13 @@ static char **split_parallel_commands(char *linecopy, int *out_count) {
             char *part = trim_whitespace(p);     // Trim whitespace
             if (cnt >= cap) {                    // Resize array if needed
                 cap *= 2; 
-                parts = realloc(parts, sizeof(char*) * cap); 
+                char **new_parts = realloc(parts, sizeof(char*) * cap);
+                if (!new_parts) {
+                    shell_error(ENOMEM);
+                    free(parts);
+                    return NULL;
+                }
+                parts = new_parts;
             }
             parts[cnt++] = part;                 // Add final segment
             break;
@@ -346,12 +620,25 @@ static char **split_parallel_commands(char *linecopy, int *out_count) {
         char *part = trim_whitespace(p);         // Trim whitespace
         if (cnt >= cap) {                        // Resize array if needed
             cap *= 2; 
-            parts = realloc(parts, sizeof(char*) * cap); 
+            char **new_parts = realloc(parts, sizeof(char*) * cap);
+            if (!new_parts) {
+                shell_error(ENOMEM);
+                free(parts);
+                return NULL;
+            }
+            parts = new_parts;
         }
         parts[cnt++] = part;                     // Store this segment
         p = amp + 1;                             // Move past '&'
     }
-    parts = realloc(parts, sizeof(char*) * (cnt + 1)); // Null-terminate array
+    
+    char **final_parts = realloc(parts, sizeof(char*) * (cnt + 1)); // Null-terminate array
+    if (!final_parts) {
+        shell_error(ENOMEM);
+        free(parts);
+        return NULL;
+    }
+    parts = final_parts;
     parts[cnt] = NULL;
     if (out_count) *out_count = (int)cnt;       // Return number of segments
     return parts;
@@ -426,13 +713,13 @@ int main(int argc, char *argv[]) {
      * - If one argument is provided, try to open it as batch file now.
      */
     if (argc > 2) {
-        write(STDERR_FILENO, "An error has occurred\n", 22);
+        shell_error(E2BIG);
         exit(1);
     }
     if (argc == 2) {
         FILE *batch = fopen(argv[1], "r");
         if (!batch) {
-            write(STDERR_FILENO, "An error has occurred\n", 22);
+            shell_error(ENOENT);
             exit(1);
         }
         infile = batch;
@@ -448,123 +735,89 @@ int main(int argc, char *argv[]) {
     shell_paths = malloc(sizeof(char*));
     shell_paths[0] = strdup("/bin");
 
-    // Optionally print available_programs info, but only after argument/batch file checks
-    if (available_programs) {
+    // Optionally print available_programs info, but only in interactive mode
+    if (is_interactive && available_programs) {
         printf("Found %d programs in system bin directories.\n", available_programs->count);
-    } else {
+    } else if (is_interactive && !available_programs) {
         printf("Failed to load programs from bin directories.\n");
         print_errno();
     }
 
-    while (1) { // Infinite loop to continuously prompt for input
-        if (is_interactive) {
-            printf("wish>");
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) {
-                // ...existing code...
-                // End new helpers integration
-            } else {
-                // ...existing code...
-            }
-        } else {
-            // --- BATCH MODE ---
-            // Not implemented
-            exit(1);
-        }
-        // --- INTERACTIVE MODE ---
-        if(is_interactive) {
-            printf("wish>");
-            // Prompt user for input
-            if (fgets(inputBuffer, sizeof(inputBuffer), stdin) != NULL) { // up to ((BUFFER_SIZE) - 1) chars + null terminator
-                // Remove trailing newline, if it exists
-                char *newline = strchr(inputBuffer, '\n');
-                if (newline) {
-                    *newline = '\0';
-                } else {
-                    // If no newline, input was too long and was truncated
-                    printf("Input too long. Truncating.\n");
-                    clear_stdin_buffer();
-                }
-                //printf("You entered: '%s'\n", inputBuffer);
-                
-                // Tokenize inputBuffer to extract command and arguments
+    // Print initial prompt in interactive mode
+    if (is_interactive) {
+        printf("wish>");
+    }
 
-                char *tokens[BUFFER_SIZE / 2 + 1];
-                int token_count = tokenize_input(inputBuffer, tokens, BUFFER_SIZE / 2 + 1);
-
-                // Skip empty input lines
-                if (token_count == 0) {
-                    continue;
-                }
-
-                // Use handle_builtin for all builtins
-                if (handle_builtin(tokens)) {
-                    continue; // builtin handled, do not fork
-                }
-
-
-
-        // If no paths are set, print error and skip execution
-        if (shell_path_count == 0) {
-            write(STDERR_FILENO, "An error has occurred\n", 22);
-            continue;
-        }
-        int executed = 0;
-        // Check for absolute or relative path
-        if (tokens[0][0] == '/' || (tokens[0][0] == '.' && tokens[0][1] == '/')) {
-            if (access(tokens[0], X_OK) == 0) {
-                pid_t pid = fork();
-                if (pid == 0) {
-                    execv(tokens[0], tokens);
-                    write(STDERR_FILENO, "An error has occurred\n", 21);
-                    exit(1);
-                } else {
-                    wait(NULL);
-                }
-                executed = 1;
-            }
-        } else {
-            for (int i = 0; i < shell_path_count; i++) {
-                char fullpath[1024];
-                snprintf(fullpath, sizeof(fullpath), "%s/%s", shell_paths[i], tokens[0]);
-                if (access(fullpath, X_OK) == 0) {
-                    pid_t pid = fork();
-                    if (pid == 0) {
-                        execv(fullpath, tokens);
-                        write(STDERR_FILENO, "An error has occurred\n", 21);
-                        exit(1);
-                    } else {
-                        wait(NULL);
-                    }
-                    executed = 1;
-                    break;
-                }
-            }
-        }
-        if (!executed) {
-            write(STDERR_FILENO, "An error has occurred\n", 22);
-        }
-            } else {
-                // Handle EOF (Control+D) or input error
-                if (feof(stdin)) {
-                    // EOF encountered (Control+D pressed)
+    while (1) {
+        // Read input from appropriate source
+        if (fgets(inputBuffer, sizeof(inputBuffer), infile) == NULL) {
+            // Handle EOF or read error
+            if (feof(infile)) {
+                // EOF reached
+                if (is_interactive) {
                     printf("\nGoodbye!\n");
-                    break; // Exit the main loop gracefully
-                } else {
-                    // Handle other input errors
+                }
+                break; // Exit loop gracefully
+            } else {
+                // Read error
+                if (is_interactive) {
                     printf("Command not recognised, please try again.\n");
                 }
+                shell_error(EIO);
+                break;
             }
+        }
+
+        // Print prompt only in interactive mode
+        if (is_interactive) {
+            // Prompt already printed before fgets in interactive mode
+        }
+
+        // Remove trailing newline
+        char *newline = strchr(inputBuffer, '\n');
+        if (newline) {
+            *newline = '\0';
         } else {
-            // --- BATCH MODE ---
-            // Not implemented
-            exit(1);
+            // Input too long - truncated
+            if (is_interactive) {
+                printf("Input too long. Truncating.\n");
+                clear_stdin_buffer();
+            }
+        }
+
+        // Skip empty lines
+        char *trimmed = trim_whitespace(inputBuffer);
+        if (*trimmed == '\0') {
+            if (is_interactive) {
+                printf("wish>");
+            }
+            continue;
+        }
+
+        // Process the command line (handles parallel commands, redirection, etc.)
+        process_command_line(inputBuffer);
+        
+        // Print prompt for next iteration in interactive mode
+        if (is_interactive) {
+            printf("wish>");
         }
     }
     
     // Cleanup before exit
+    if (infile != stdin) {
+        fclose(infile);
+    }
+    
+    // Free shell paths
+    for (int i = 0; i < shell_path_count; i++) {
+        free(shell_paths[i]);
+    }
+    free(shell_paths);
+    
     if (available_programs) {
         free_program_array(available_programs);
     }
+    
     return 0;
 }
 
