@@ -426,8 +426,9 @@ int main(int argc, char *argv[]) {
      * - If one argument is provided, try to open it as batch file now.
      */
     if (argc > 2) {
-        write(STDERR_FILENO, "An error has occurred\n", 22);
-        exit(1);
+        errno = E2BIG; // Argument list too long
+        print_errno();
+        exit(7);
     }
     if (argc == 2) {
         FILE *batch = fopen(argv[1], "r");
