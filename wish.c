@@ -64,9 +64,6 @@ static int handle_builtin(char **argv) {
             _shell_error_msg();   /* exit with args -> shell error, but do not exit */
             return 1;             /* handled (error) */
         } else {
-            /* Normal termination of shell. We intentionally do not try to free every
-               allocation here — the OS will reclaim memory on process exit. If you
-               want to free available_programs, make it global and free it here. */
             exit(0);
         }
     }
