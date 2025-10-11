@@ -53,13 +53,23 @@ void run_parallel_cmds(char* cmds[]) {
             //If execv fails...
             write(STDERR_FILENO, error_msg, strlen(error_msg));
             exit(1);
+        } else {
+            // Debug Start
+            #ifdef DEBUG
+            printf("[parallel] started child PID %d for command: %s\n", pids[i], cmds[i]);
+            fflush(stdout);
+            #endif
         }
     }
 
-
     //Parent waits for all children
     for (int i = 0; i < n; i++) {
-        waitpid(pids[i], NULL, 0);
+        int status;
+        waitpid(pids[i], &status, 0);
+        // Debug Finish
+        #ifdef DEBUG
+        printf("[parallel] child PID %d finished (status=%d)\n", pids[i], status);
+        fflush(stdout);
+        #endif
     }
 }
-
