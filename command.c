@@ -189,7 +189,6 @@ char **split_parallel_commands(char *linecopy, int *out_count) {
 
 // Implementation of parse_redirection
 int parse_redirection(char *cmd, char **out_target) {
-    fprintf(stderr, "[DEBUG] parse_redirection input: '%s'\n", cmd);
     char *redir = strchr(cmd, '>');
     if (!redir) {
         if (out_target) *out_target = NULL;
@@ -206,7 +205,6 @@ int parse_redirection(char *cmd, char **out_target) {
     // Skip whitespace/newlines after '>'
     while (*redir == ' ' || *redir == '\t' || *redir == '\n' || *redir == '\r') redir++;
     if (*redir == '\0') {
-        fprintf(stderr, "[DEBUG] parse_redirection: no filename after '>'\n");
         return -1;
     }
     // Find end of filename, trim trailing whitespace/newlines
@@ -220,7 +218,6 @@ int parse_redirection(char *cmd, char **out_target) {
     if (*end) *end = '\0';
     if (out_target) {
         *out_target = strdup(redir);
-        fprintf(stderr, "[DEBUG] parse_redirection: extracted filename: '%s'\n", *out_target);
     }
     return 1;
 }
@@ -258,7 +255,6 @@ int process_command_line(char *line) {
             char *redir_target = NULL;
             if (parse_redirection(cmd_work, &redir_target) < 0) {
                 shell_error(EINVAL);
-                fprintf(stderr, "[DEBUG] parse_redirection failed for: %s\n", cmd_work);
                 free(cmd_work);
                 if (redir_target) free(redir_target);
                 continue;
@@ -276,7 +272,6 @@ int process_command_line(char *line) {
                 continue;
             }
             if (shell_path_count == 0) {
-                fprintf(stderr, "[DEBUG] Command not found: %s\n", tokens[0]);
                 shell_error(ENOENT);
                 free(cmd_work);
                 if (redir_target) free(redir_target);
@@ -307,33 +302,25 @@ int process_command_line(char *line) {
             }
             pid_t pid = fork();
             if (pid < 0) {
-                fprintf(stderr, "[DEBUG] fork() failed\n");
                 shell_error(EAGAIN);
                 free(cmd_work);
                 if (redir_target) free(redir_target);
                 continue;
             } else if (pid == 0) {
-                fprintf(stderr, "[DEBUG] In child process for: %s\n", fullpath);
                 if (redir_target) {
-                    fprintf(stderr, "[DEBUG] Attempting to open redirection target: %s\n", redir_target);
                     int fd = open(redir_target, O_CREAT | O_WRONLY | O_TRUNC, 0644);
                     if (fd < 0) {
-                        fprintf(stderr, "[DEBUG] Failed to open redirection file: %s\n", redir_target);
                         shell_error(EACCES);
                         exit(1);
                     }
-                    fprintf(stderr, "[DEBUG] Successfully opened %s (fd=%d). Redirecting stdout and stderr.\n", redir_target, fd);
                     dup2(fd, STDOUT_FILENO);
                     dup2(fd, STDERR_FILENO);
                     close(fd);
                 }
-                fprintf(stderr, "[DEBUG] Executing command: %s\n", fullpath);
                 execv(fullpath, tokens);
-                fprintf(stderr, "[DEBUG] execv failed for %s\n", fullpath);
                 shell_error(ENOEXEC);
                 exit(1);
             } else {
-                fprintf(stderr, "[DEBUG] In parent process, child pid: %d\n", pid);
                 pids[pid_count++] = pid;
             }
             free(cmd_work);
