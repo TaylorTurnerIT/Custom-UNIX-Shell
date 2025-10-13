@@ -194,6 +194,12 @@ int parse_redirection(char *cmd, char **out_target) {
         if (out_target) *out_target = NULL;
         return 0;
     }
+
+    //checks for multiple >'s
+    if (strchr(redir + 1, '>')) {
+        return -1;
+    }
+
     // Null-terminate the command before '>' and trim trailing whitespace/newlines
     char *cmd_end = redir - 1;
     while (cmd_end >= cmd && (*cmd_end == ' ' || *cmd_end == '\t' || *cmd_end == '\n' || *cmd_end == '\r')) {
