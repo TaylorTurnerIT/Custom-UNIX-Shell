@@ -322,6 +322,11 @@ int process_command_line(char *line) {
                 exit(1);
             } else {
                 pids[pid_count++] = pid;
+
+                #ifdef DDEBUG
+                    fprintf(stderr, "[DEBUG] Created child PID: %d for command: %s\n", pid, tokens[0]);
+                #endif
+
             }
             free(cmd_work);
             if (redir_target) free(redir_target);
@@ -329,6 +334,11 @@ int process_command_line(char *line) {
     }
     for (int i = 0; i < pid_count; i++) {
         waitpid(pids[i], NULL, 0);
+
+        #ifdef DDEBUG
+            fprintf(stderr, "[DEBUG] Child PID %d completed.\n", pids[i]);
+        #endif
+
     }
     free(pids);
     free(cmds);
