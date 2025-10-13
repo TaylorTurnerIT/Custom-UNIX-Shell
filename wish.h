@@ -12,4 +12,7 @@ extern int shell_path_count;
 void shell_error(int err_code);
 void print_errno(void);
 
+// Input parsing
+int tokenize_input(char *input, char **tokens, int max_tokens);
+
 #endif // WISH_H

@@ -105,8 +105,8 @@ void fork_and_run(const char *program, char *const argv[]) {
         return;
     } else if (pid == 0) {
         // Child process
-        execvp(program, argv);
-        // If execvp returns, an error occurred
+        execv(program, argv);
+        // If execv returns, an error occurred
         print_errno();
         exit(1);
     } else {
@@ -127,7 +127,9 @@ void fork_and_run(const char *program, char *const argv[]) {
 
 
 int main(int argc, char *argv[]) {
-    char inputBuffer[BUFFER_SIZE]; // Buffer to hold user input
+    char *line = NULL; // Buffer for getline
+    size_t len = 0; // Buffer length for getline
+    ssize_t read; // Return value from getline
     int is_interactive = 1; // Flag for interactive mode
     FILE *infile = stdin; // Input stream (stdin for interactive, batch file for batch mode)
 
@@ -159,75 +161,55 @@ int main(int argc, char *argv[]) {
     shell_paths = malloc(sizeof(char*));
     shell_paths[0] = strdup("/bin");
 
-    // Optionally print available_programs info, but only in interactive mode
-    if (is_interactive && available_programs) {
-        printf("Found %d programs in system bin directories.\n", available_programs->count);
-    } else if (is_interactive && !available_programs) {
-        printf("Failed to load programs from bin directories.\n");
-        print_errno();
-    }
+    // Note: Debug output removed per rubric requirements
 
     // Print initial prompt in interactive mode
     if (is_interactive) {
-        printf("wish>");
+        printf("wish> ");
     }
 
     while (1) {
-        // Read input from appropriate source
-        if (fgets(inputBuffer, sizeof(inputBuffer), infile) == NULL) {
+        // Read input from appropriate source using getline
+        read = getline(&line, &len, infile);
+        if (read == -1) {
             // Handle EOF or read error
             if (feof(infile)) {
-                // EOF reached
-                if (is_interactive) {
-                    printf("\nGoodbye!\n");
-                }
-                break; // Exit loop gracefully
+                // EOF reached - exit gracefully as per rubric
+                exit(0);
             } else {
                 // Read error
-                if (is_interactive) {
-                    printf("Command not recognised, please try again.\n");
-                }
                 shell_error(EIO);
-                break;
+                exit(1);
             }
-        }
-
-        // Print prompt only in interactive mode
-        if (is_interactive) {
-            // Prompt already printed before fgets in interactive mode
         }
 
         // Remove trailing newline
-        char *newline = strchr(inputBuffer, '\n');
-        if (newline) {
-            *newline = '\0';
-        } else {
-            // Input too long - truncated
-            if (is_interactive) {
-                printf("Input too long. Truncating.\n");
-                clear_stdin_buffer();
-            }
+        if (read > 0 && line[read-1] == '\n') {
+            line[read-1] = '\0';
         }
 
         // Skip empty lines
-        char *trimmed = trim_whitespace(inputBuffer);
+        char *trimmed = trim_whitespace(line);
         if (*trimmed == '\0') {
             if (is_interactive) {
-                printf("wish>");
+                printf("wish> ");
             }
             continue;
         }
 
         // Process the command line (handles parallel commands, redirection, etc.)
-        process_command_line(inputBuffer);
+        process_command_line(line);
         
         // Print prompt for next iteration in interactive mode
         if (is_interactive) {
-            printf("wish>");
+            printf("wish> ");
         }
     }
     
     // Cleanup before exit
+    if (line) {
+        free(line);
+    }
     if (infile != stdin) {
         fclose(infile);
     }
