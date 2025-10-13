@@ -33,5 +33,7 @@ Thumbs.db
 
 # Ignore dotless files (main)
 *
+!*.c
+!*.h
 !*.*/
 !*/
