@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
+CFLAGS = -Wall -Wextra -g -pthread
 TARGET = wish
 
 SRC = $(wildcard *.c)
@@ -8,8 +8,8 @@ OBJ = $(SRC:.c=.o)
 all: $(TARGET) run
 
 
-$(TARGET): wish.o parallel.o program_array.o utils.o command.o
-	$(CC) $(CFLAGS) -o $@ wish.o parallel.o program_array.o utils.o command.o
+$(TARGET): wish.o parallel.o program_array.o utils.o command.o timer.o
+	$(CC) $(CFLAGS) -o $@ wish.o parallel.o program_array.o utils.o command.o timer.o
 
 parallel_test: parallel_test.o parallel.o
 	$(CC) $(CFLAGS) -o $@ parallel_test.o parallel.o
