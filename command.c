@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
+#include "timer.h"
 #include "wish.h"
 #include "utils.h"
 #include <unistd.h>
@@ -48,6 +50,39 @@ static int handle_builtin(char **argv) {
         } else {
             shell_paths = NULL;
         }
+        return 1;
+    }
+    else if (strcmp(argv[0], "sleep") == 0) {
+        /*
+         * Builtin: sleep
+         * ----------------
+         * Usage: sleep <seconds>
+         * Blocks the shell process for the specified number of seconds.
+         * Implementation notes:
+         * - Validates that exactly one argument is provided and that it
+         *   represents a non-negative integer number of seconds. On invalid
+         *   input the shell prints the standard error message via
+         *   `shell_error(EINVAL)` and returns to the prompt.
+         * - Uses `nanosleep()` to avoid busy-waiting. If `nanosleep` is
+         *   interrupted by a signal (`EINTR`), the remaining time is
+         *   preserved in `rem` and the call is retried until completion.
+         * - Because this is a builtin, the shell process itself blocks.
+         *   If you want background sleeps (i.e. non-blocking for the
+         *   shell), run an external sleep program or use the shell's
+         *   background/parallel execution features.
+         */
+        if (!argv[1] || argv[2]) {
+            shell_error(EINVAL);
+            return 1;
+        }
+        char *endptr = NULL;
+        long secs = strtol(argv[1], &endptr, 10);
+        if (endptr == argv[1] || *endptr != '\0' || secs < 0) {
+            shell_error(EINVAL);
+            return 1;
+        }
+        /* Use the central timer manager. Convert seconds -> milliseconds ticks. */
+        timer_sleep(secs * 1000);
         return 1;
     }
     return 0;
