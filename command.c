@@ -266,6 +266,29 @@ int parse_redirection(char *cmd, char **out_target) {
 // Implementation of process_command_line (stub, should be filled in with actual logic)
 int process_command_line(char *line) {
     if (!line || *line == '\0') return 0;
+    /* Detect if the line ends with a trailing '&' (background the whole line).
+     * If so, do not wait for child PIDs created for this line. This allows
+     * constructs like "sleep 2 &" on its own line to run in background
+     * while subsequent lines run in the foreground.
+     */
+    int background_line = 0;
+    size_t linelen = strlen(line);
+    char *trimend = NULL;
+    if (linelen > 0) {
+        /* Make a temporary copy to inspect trailing characters */
+        char *tmp = strdup(line);
+        if (tmp) {
+            trimend = tmp + strlen(tmp) - 1;
+            while (trimend >= tmp && (*trimend == ' ' || *trimend == '\t' || *trimend == '\n' || *trimend == '\r')) {
+                *trimend = '\0';
+                trimend--;
+            }
+            if (trimend >= tmp && *trimend == '&') {
+                background_line = 1;
+            }
+            free(tmp);
+        }
+    }
     char *linecopy = strdup(line);
     if (!linecopy) {
         shell_error(ENOMEM);
@@ -373,13 +396,15 @@ int process_command_line(char *line) {
             if (redir_target) free(redir_target);
         }
     }
-    for (int i = 0; i < pid_count; i++) {
-        waitpid(pids[i], NULL, 0);
+    if (!background_line) {
+        for (int i = 0; i < pid_count; i++) {
+            waitpid(pids[i], NULL, 0);
 
-        #ifdef DDEBUG
-            fprintf(stderr, "[DEBUG] Child PID %d completed.\n", pids[i]);
-        #endif
+            #ifdef DDEBUG
+                fprintf(stderr, "[DEBUG] Child PID %d completed.\n", pids[i]);
+            #endif
 
+        }
     }
     free(pids);
     free(cmds);
